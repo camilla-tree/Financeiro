@@ -26,21 +26,32 @@ def _get_pool() -> ConnectionPool:
         sep = "&" if "?" in url else "?"
         url = f"{url}{sep}sslmode=require"
 
-    # números conservadores pro Streamlit Cloud
     return ConnectionPool(
         conninfo=url,
         min_size=1,
         max_size=4,
-        kwargs={"prepare_threshold": 0},
+        kwargs={
+            "prepare_threshold": 0,
+            "prepared_statement_cache_size": 0,   # <- ESSENCIAL
+        },
     )
-
 
 @contextmanager
 def fresh_conn():
     pool = _get_pool()
     with pool.connection() as conn:
-        yield conn
+        # <- ESSENCIAL no Supabase Pooler
+        try:
+            with conn.cursor() as cur:
+                cur.execute("DEALLOCATE ALL;")
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
+        yield conn
 
 def fetch_df(sql: str, params: Optional[Tuple[Any, ...]] = None) -> pd.DataFrame:
     with fresh_conn() as conn:

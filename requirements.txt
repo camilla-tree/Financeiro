@@ -6,4 +6,4 @@ reportlab
 pdfplumber
 pdfminer.six
 Pillow
-psycopg-pool
+psycopg_pool
