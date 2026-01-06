@@ -12,7 +12,7 @@ import pandas as pd
 import pdfplumber
 import psycopg
 
-from db import fetch_df, fresh_conn
+from db import fetch_df_cached, fresh_conn
 from parsers.btg import parse_btg
 from parsers.inter import parse_inter
 from parsers.inter_csv import parse_inter_csv
@@ -299,7 +299,7 @@ def _normalize_transacoes_for_db(transacoes: list[dict]) -> list[dict]:
 def render_import_pdf():
     st.subheader("Importar Extrato (PDF/CSV)")
 
-    df_emp = fetch_df("SELECT id, nome FROM empresa ORDER BY nome")
+    df_emp = fetch_df_cached("SELECT id, nome FROM empresa ORDER BY nome")
     if df_emp.empty:
         st.warning("Cadastre uma empresa primeiro (Admin Cadastros).")
         return
@@ -307,7 +307,7 @@ def render_import_pdf():
     emp_nome = st.selectbox("Empresa", df_emp["nome"].tolist())
     empresa_id = int(df_emp[df_emp["nome"] == emp_nome]["id"].iloc[0])
 
-    df_contas = fetch_df(
+    df_contas = fetch_df_cached(
         """
         SELECT cb.id AS conta_bancaria_id, cb.apelido, cb.agencia, cb.numero,
                b.id AS banco_id, b.codigo AS banco_codigo, b.nome AS banco_nome
@@ -347,7 +347,7 @@ def render_import_pdf():
 
     # opcional: admin pode escolher outro "usuario_id" para registrar a importação
     if st.session_state.get("is_admin"):
-        df_user = fetch_df("SELECT id, nome FROM usuario WHERE ativo=true ORDER BY nome")
+        df_user = fetch_df_cached("SELECT id, nome FROM usuario WHERE ativo=true ORDER BY nome")
         if not df_user.empty:
             opt = ["(Usar sessão / Sem usuário)"] + df_user["nome"].tolist()
             u = st.selectbox("Usuário (opcional)", opt, index=0)

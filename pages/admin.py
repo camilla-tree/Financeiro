@@ -1,7 +1,7 @@
 from datetime import date
 import re
 import streamlit as st
-from db import fetch_df, run_sql, run_sql_returning_id
+from db import fetch_df_cached, run_sql, run_sql_returning_id
 from audit import log_action
 
 
@@ -74,7 +74,7 @@ def render_admin():
 
         with colB:
             st.markdown("### Empresas (edite inline e clique em salvar)")
-            df = fetch_df("SELECT id, nome, cnpj, situacao, diretor FROM empresa ORDER BY nome")
+            df = fetch_df_cached("SELECT id, nome, cnpj, situacao, diretor FROM empresa ORDER BY nome")
             edited = _editor_with_delete(df, key="emp_editor")
 
             if edited is not None and st.button("Salvar alterações", key="emp_save"):
@@ -128,7 +128,7 @@ def render_admin():
 
         with colB:
             st.markdown("### Clientes (edite inline e clique em salvar)")
-            df = fetch_df("SELECT id, nome, dt_inicio_contrato, ativo FROM cliente ORDER BY nome")
+            df = fetch_df_cached("SELECT id, nome, dt_inicio_contrato, ativo FROM cliente ORDER BY nome")
             edited = _editor_with_delete(df, key="cli_editor")
 
             if edited is not None and st.button("Salvar alterações", key="cli_save"):
@@ -156,9 +156,9 @@ def render_admin():
     # PROCESSO
     # =========================
     with tabs[2]:
-        df_emp = fetch_df("SELECT id, nome FROM empresa ORDER BY nome")
-        df_cli = fetch_df("SELECT id, nome FROM cliente ORDER BY nome")
-        df_status = fetch_df("SELECT id, nome FROM processo_status ORDER BY nome")
+        df_emp = fetch_df_cached("SELECT id, nome FROM empresa ORDER BY nome")
+        df_cli = fetch_df_cached("SELECT id, nome FROM cliente ORDER BY nome")
+        df_status = fetch_df_cached("SELECT id, nome FROM processo_status ORDER BY nome")
 
         if df_emp.empty or df_cli.empty or df_status.empty:
             st.warning("Cadastre antes: empresa, cliente e seeds de processo_status.")
@@ -224,7 +224,7 @@ def render_admin():
 
             with colB:
                 st.markdown("### Processos (edite inline e clique em salvar)")
-                df = fetch_df(
+                df = fetch_df_cached(
                     """
                     SELECT
                       p.id,
@@ -313,8 +313,8 @@ def render_admin():
     # CONTA BANCÁRIA (numero opcional)
     # =========================
     with tabs[3]:
-        df_emp = fetch_df("SELECT id, nome FROM empresa ORDER BY nome")
-        df_b = fetch_df("SELECT id, codigo, nome FROM banco ORDER BY codigo")
+        df_emp = fetch_df_cached("SELECT id, nome FROM empresa ORDER BY nome")
+        df_b = fetch_df_cached("SELECT id, codigo, nome FROM banco ORDER BY codigo")
 
         if df_emp.empty or df_b.empty:
             st.warning("Cadastre primeiro: banco (seeds) e empresa.")
@@ -361,7 +361,7 @@ def render_admin():
 
             with colB:
                 st.markdown("### Contas (edite inline e clique em salvar)")
-                df = fetch_df(
+                df = fetch_df_cached(
                     """
                     SELECT
                       cb.id,

@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any, Tuple
 import pandas as pd
 import streamlit as st
 
-from db import fetch_df, fresh_conn, run_sql_returning_id
+from db import fetch_df_cached, fresh_conn, run_sql_returning_id
 from audit import log_action
 
 
@@ -150,18 +150,18 @@ def resumir_rateio(df: pd.DataFrame) -> Dict[str, Any]:
 # =========================
 @st.cache_data(ttl=60)
 def get_empresas() -> pd.DataFrame:
-    return fetch_df("SELECT id, nome FROM empresa ORDER BY nome")
+    return fetch_df_cached("SELECT id, nome FROM empresa ORDER BY nome")
 
 
 @st.cache_data(ttl=60)
 def get_clientes() -> pd.DataFrame:
-    return fetch_df("SELECT id, nome FROM cliente ORDER BY nome")
+    return fetch_df_cached("SELECT id, nome FROM cliente ORDER BY nome")
 
 
 @st.cache_data(ttl=60)
 def get_processos() -> pd.DataFrame:
     # processo tem: id, referencia, empresa_id, cliente_id, data_registro, di, ...
-    return fetch_df(
+    return fetch_df_cached(
         """
         SELECT p.id, p.referencia, p.empresa_id, p.cliente_id, p.di, p.data_registro,
                e.nome as empresa_nome, c.nome as cliente_nome
@@ -175,7 +175,7 @@ def get_processos() -> pd.DataFrame:
 
 @st.cache_data(ttl=60)
 def listar_fechamentos(empresa_id: int, limit: int = 50) -> pd.DataFrame:
-    return fetch_df(
+    return fetch_df_cached(
         """
         SELECT f.id, f.data_registro, e.nome as empresa,
                f.referencia_processo, f.di, f.cliente_di_texto,

@@ -8,7 +8,7 @@ from pages.conciliacao import render_conciliacao
 from pages.fechamento import render_fechamento
 from pages.exportacao import render_exportacao
 
-from db import fetch_df
+from db import fetch_df_cached
 
 
 # 1) Page config
@@ -72,7 +72,7 @@ if not st.session_state.get("is_admin"):
         st.error("Sessão sem usuario_id. Verifique o fluxo de autenticação.")
         st.stop()
 
-    dfp = fetch_df("SELECT tela FROM usuario_tela WHERE usuario_id=%s", (usuario_id,))
+    dfp = fetch_df_cached("SELECT tela FROM usuario_tela WHERE usuario_id=%s", (usuario_id,))
     if dfp is not None and not dfp.empty:
         allowed = set(dfp["tela"].astype(str).tolist())
     else:

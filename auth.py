@@ -4,8 +4,7 @@ import secrets
 import string
 import streamlit as st
 from streamlit.errors import StreamlitSecretNotFoundError
-
-from db import fetch_df, fresh_conn
+from db import fetch_df_cached
 
 ALPHABET = string.ascii_letters + string.digits
 
@@ -25,51 +24,6 @@ def _get_admin_key() -> str:
         return (st.secrets.get("ADMIN_ACCESS_KEY") or "").strip()
     except StreamlitSecretNotFoundError:
         return ""
-
-
-def _get_client_ip_and_ua() -> tuple[str | None, str | None]:
-    """
-    Tenta obter IP real via headers.
-    Em deploy geralmente vem em X-Forwarded-For.
-    """
-    ip = None
-    ua = None
-
-    headers = None
-    try:
-        headers = st.context.headers  # type: ignore[attr-defined]
-    except Exception:
-        headers = None
-
-    if headers:
-        ua = headers.get("user-agent")
-
-        xff = headers.get("x-forwarded-for")
-        if xff:
-            ip = xff.split(",")[0].strip()
-
-        if not ip:
-            ip = headers.get("x-real-ip") or headers.get("client-ip")
-
-    return ip, ua
-
-
-def _registrar_login(usuario_id: int | None, is_admin: bool):
-    ip, ua = _get_client_ip_and_ua()
-    try:
-        with fresh_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    insert into usuario_login (usuario_id, is_admin, ip, user_agent)
-                    values (%s, %s, %s, %s)
-                    """,
-                    (usuario_id, bool(is_admin), ip, ua),
-                )
-            conn.commit()
-    except Exception:
-        # não derruba o app se falhar log (MVP)
-        pass
 
 
 def require_access():
@@ -93,17 +47,16 @@ def require_access():
 
         # ---------- ADMIN ----------
         admin_key = _get_admin_key()
+        st.write("DEBUG admin_key:", _get_admin_key())
         if admin_key and key == admin_key:
             st.session_state["auth_ok"] = True
             st.session_state["is_admin"] = True
             st.session_state["usuario_id"] = None
             st.session_state["access_key"] = key
-
-            _registrar_login(usuario_id=None, is_admin=True)
             st.rerun()
 
         # ---------- USUÁRIO NORMAL ----------
-        df = fetch_df(
+        df = fetch_df_cached(
             """
             SELECT id
             FROM usuario
@@ -118,14 +71,10 @@ def require_access():
             st.error("Chave inválida ou usuário inativo.")
             st.stop()
 
-        usuario_id = int(df["id"].iloc[0])
-
         st.session_state["auth_ok"] = True
         st.session_state["is_admin"] = False
-        st.session_state["usuario_id"] = usuario_id
+        st.session_state["usuario_id"] = int(df["id"].iloc[0])
         st.session_state["access_key"] = key
-
-        _registrar_login(usuario_id=usuario_id, is_admin=False)
         st.rerun()
 
     st.stop()

@@ -9,7 +9,7 @@ from typing import Optional, Tuple, List
 import pandas as pd
 import streamlit as st
 
-from db import fetch_df
+from db import fetch_df_cached
 
 # PDF (reportlab)
 from reportlab.lib.pagesizes import A4, landscape
@@ -89,18 +89,18 @@ def _fmt_date(d) -> str:
 
 
 def _get_status_confirmada_id() -> int:
-    df = fetch_df("SELECT id FROM conciliacao_status WHERE nome='CONFIRMADA' LIMIT 1")
+    df = fetch_df_cached("SELECT id FROM conciliacao_status WHERE nome='CONFIRMADA' LIMIT 1")
     if df.empty:
         return 0
     return int(df.iloc[0]["id"])
 
 
 def _fetch_clientes() -> pd.DataFrame:
-    return fetch_df("SELECT id, nome FROM cliente WHERE ativo=true ORDER BY nome")
+    return fetch_df_cached("SELECT id, nome FROM cliente WHERE ativo=true ORDER BY nome")
 
 
 def _fetch_empresas() -> pd.DataFrame:
-    return fetch_df("SELECT id, nome FROM empresa ORDER BY nome")
+    return fetch_df_cached("SELECT id, nome FROM empresa ORDER BY nome")
 
 
 def _fetch_saldo_anterior(
@@ -138,7 +138,7 @@ def _fetch_saldo_anterior(
       AND mb.dt_movimento < %s
       {filtro_empresa}
     """
-    df = fetch_df(sql, tuple(params))
+    df = fetch_df_cached(sql, tuple(params))
     try:
         return float(df.iloc[0]["saldo_anterior"]) if not df.empty else 0.0
     except Exception:
@@ -192,7 +192,7 @@ def _fetch_movimentos_conciliados(
 
     ORDER BY e.nome, mb.dt_movimento, mb.id
     """
-    return fetch_df(sql, tuple(params))
+    return fetch_df_cached(sql, tuple(params))
 
 
 def _totais_entrada_saida(df: pd.DataFrame) -> Tuple[float, float]:

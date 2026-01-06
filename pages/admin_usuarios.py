@@ -1,7 +1,7 @@
 from datetime import date
 import streamlit as st
 
-from db import fetch_df, run_sql, run_sql_returning_id
+from db import fetch_df_cached, run_sql, run_sql_returning_id
 from auth import generate_access_key
 from audit import log_action
 
@@ -26,7 +26,7 @@ def _has_tela(tela: str) -> bool:
     if not usuario_id:
         return False
 
-    dfp = fetch_df(
+    dfp = fetch_df_cached(
         "SELECT 1 FROM usuario_tela WHERE usuario_id=%s AND tela=%s LIMIT 1",
         (usuario_id, tela),
     )
@@ -74,7 +74,7 @@ def render_admin_usuarios():
 
         st.divider()
         st.markdown("### Regenerar chave")
-        df_users = fetch_df("SELECT id, nome, email FROM usuario ORDER BY nome")
+        df_users = fetch_df_cached("SELECT id, nome, email FROM usuario ORDER BY nome")
         if df_users.empty:
             st.info("Sem usuários.")
         else:
@@ -96,7 +96,7 @@ def render_admin_usuarios():
     with colB:
         st.markdown("### Usuários (edite inline e clique em salvar)")
 
-        df = fetch_df("SELECT id, nome, email, ativo, dt_inicio, access_key FROM usuario ORDER BY nome")
+        df = fetch_df_cached("SELECT id, nome, email, ativo, dt_inicio, access_key FROM usuario ORDER BY nome")
         if df.empty:
             st.info("Sem usuários.")
             return
@@ -120,7 +120,7 @@ def render_admin_usuarios():
         st.divider()
         st.markdown("### Permissões de telas")
 
-        df_users2 = fetch_df("SELECT id, nome, email FROM usuario ORDER BY nome")
+        df_users2 = fetch_df_cached("SELECT id, nome, email FROM usuario ORDER BY nome")
         if df_users2.empty:
             st.info("Sem usuários.")
             return
@@ -129,7 +129,7 @@ def render_admin_usuarios():
         picked_perm = st.selectbox("Usuário para configurar telas", opt, key="perm_user_pick")
         picked_id2 = int(picked_perm.split("•")[0].strip())
 
-        df_perm = fetch_df("SELECT tela FROM usuario_tela WHERE usuario_id=%s", (picked_id2,))
+        df_perm = fetch_df_cached("SELECT tela FROM usuario_tela WHERE usuario_id=%s", (picked_id2,))
         current = df_perm["tela"].tolist() if df_perm is not None and not df_perm.empty else []
 
         # ✅ evita quebrar quando o banco tem telas antigas que não existem mais
@@ -160,7 +160,7 @@ def render_admin_usuarios():
         st.markdown("### Histórico de login (últimos 200)")
 
         # obs: depende de existir a tabela usuario_login
-        df_log = fetch_df(
+        df_log = fetch_df_cached(
             """
             SELECT dt_evento, ip, user_agent
             FROM usuario_login

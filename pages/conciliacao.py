@@ -6,12 +6,12 @@ from typing import Optional, Any, Tuple
 import streamlit as st
 import pandas as pd
 
-from db import fetch_df, fresh_conn
+from db import fetch_df_cached, fresh_conn
 
 
 @st.cache_data(ttl=60)
 def get_status_id(nome: str) -> int:
-    df = fetch_df("SELECT id FROM conciliacao_status WHERE nome = %s", (nome,))
+    df = fetch_df_cached("SELECT id FROM conciliacao_status WHERE nome = %s", (nome,))
     if df.empty:
         raise RuntimeError(f"Seed faltando em conciliacao_status: {nome}")
     return int(df.iloc[0]["id"])
@@ -34,7 +34,7 @@ def render_conciliacao():
     # =========================
     # Filtros (sem botão Buscar)
     # =========================
-    df_emp = fetch_df("SELECT id, nome FROM empresa ORDER BY nome")
+    df_emp = fetch_df_cached("SELECT id, nome FROM empresa ORDER BY nome")
     if df_emp.empty:
         st.warning("Cadastre empresas antes (Admin).")
         return
@@ -82,7 +82,7 @@ def render_conciliacao():
         emp_nome = st.selectbox("Empresa", df_emp["nome"].tolist(), key="conc_emp")
         empresa_id = int(df_emp[df_emp["nome"] == emp_nome]["id"].iloc[0])
 
-    df_contas = fetch_df(
+    df_contas = fetch_df_cached(
         """
         SELECT cb.id AS conta_bancaria_id, cb.apelido, cb.agencia, cb.numero,
                b.codigo AS banco_codigo
@@ -143,7 +143,7 @@ def render_conciliacao():
     # =========================
     # Usuário (mantém como estava)
     # =========================
-    df_user = fetch_df("SELECT id, nome FROM usuario WHERE ativo=true ORDER BY nome")
+    df_user = fetch_df_cached("SELECT id, nome FROM usuario WHERE ativo=true ORDER BY nome")
     usuario_id = None
     if not df_user.empty:
         opt_u = ["(Sem usuário)"] + df_user["nome"].tolist()
@@ -157,7 +157,7 @@ def render_conciliacao():
     # =========================
     # Apoio (Processo / Categoria / Tipo)
     # =========================
-    df_processos = fetch_df(
+    df_processos = fetch_df_cached(
         """
         SELECT p.id, p.referencia, c.nome AS cliente, ps.nome AS status
         FROM processo p
@@ -185,8 +185,8 @@ def render_conciliacao():
 
 
 
-    df_cat = fetch_df("SELECT id, nome FROM categoria_financeira WHERE ativo=true ORDER BY nome")
-    df_tipo = fetch_df("SELECT id, nome FROM movimento_tipo ORDER BY nome")
+    df_cat = fetch_df_cached("SELECT id, nome FROM categoria_financeira WHERE ativo=true ORDER BY nome")
+    df_tipo = fetch_df_cached("SELECT id, nome FROM movimento_tipo ORDER BY nome")
 
     # =========================
     # Recarregar só quando filtro muda / force_reload
@@ -259,7 +259,7 @@ def render_conciliacao():
     params.append(int(limite))
 
     if st.session_state.get("conc_force_reload", True):
-        st.session_state["conc_df_mov"] = fetch_df(base_sql, tuple(params))
+        st.session_state["conc_df_mov"] = fetch_df_cached(base_sql, tuple(params))
         st.session_state["conc_force_reload"] = False
 
     df_mov = st.session_state.get("conc_df_mov", pd.DataFrame())
