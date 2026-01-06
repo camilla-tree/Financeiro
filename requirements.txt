@@ -3,3 +3,6 @@ psycopg[binary]
 pandas
 python-dotenv
 reportlab
+pdfplumber
+pdfminer.six
+Pillow
