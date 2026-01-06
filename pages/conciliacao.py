@@ -216,11 +216,12 @@ def render_conciliacao():
       mb.descricao,
       mb.valor,
 
-      mb.categoria_id,
-      cf.nome AS categoria_nome,
-
       mb.tipo_id,
       mt.nome AS tipo_nome,
+
+      mb.categoria_id,
+      cf.nome AS categoria_nome,
+     
 
       co.id AS conciliacao_id,
       co.status_id AS conciliacao_status_id,
@@ -328,9 +329,10 @@ def render_conciliacao():
             "Data da Movimentação": df_mov["dt_movimento"],
             "Descrição": df_mov["descricao"].astype(str),
             "Valor": df_mov["valor"],
+            "Tipo": df_mov["tipo_id"].apply(_tipo_label),
 
             "Categoria": df_mov["categoria_id"].apply(_cat_label),
-            "Tipo": df_mov["tipo_id"].apply(_tipo_label),
+
             "Processo": df_mov["processo_id"].apply(_proc_label),
 
             "Cliente": df_mov["cliente_nome"].fillna("-"),
@@ -349,9 +351,10 @@ def render_conciliacao():
             "Data da Movimentação": st.column_config.DateColumn("Data da Movimentação", disabled=True),
             "Descrição": st.column_config.TextColumn("Descrição", disabled=True),
             "Valor": st.column_config.NumberColumn("Valor", disabled=True, format="%.2f"),
-
-            "Categoria": st.column_config.SelectboxColumn("Categoria", options=cat_labels, required=False),
             "Tipo": st.column_config.SelectboxColumn("Tipo", options=tipo_labels, required=False),
+            
+            "Categoria": st.column_config.SelectboxColumn("Categoria", options=cat_labels, required=False),
+
             "Processo": st.column_config.SelectboxColumn("Processo", options=proc_labels, required=False),
 
             "Cliente": st.column_config.TextColumn("Cliente", disabled=True),
@@ -377,11 +380,9 @@ def render_conciliacao():
         mid = int(edited.loc[i, "ID"])
 
         new_cat_label = edited.loc[i, "Categoria"]
-        new_tipo_label = edited.loc[i, "Tipo"]
         new_proc_label = edited.loc[i, "Processo"]
 
         new_cat_id = cat_id_by_label.get(new_cat_label)
-        new_tipo_id = tipo_id_by_label.get(new_tipo_label)
         new_proc_id = proc_id_by_label.get(new_proc_label)
 
         flag_c = bool(edited.loc[i, "Conciliado"])
@@ -397,35 +398,38 @@ def render_conciliacao():
         # detecta mudanças contra o df_mov
         old_row = df_mov[df_mov["movimento_id"] == mid].iloc[0]
         old_cat = _safe_int(old_row.get("categoria_id"))
-        old_tipo = _safe_int(old_row.get("tipo_id"))
         old_proc = _safe_int(old_row.get("processo_id"))
         old_conc = already_conc
 
 
         if (
             new_cat_id != old_cat
-            or new_tipo_id != old_tipo
             or new_proc_id != old_proc
             or (want_conc != old_conc)  # mudança de status
         ):
-            changes.append((mid, new_cat_id, new_tipo_id, new_proc_id, want_conc))
+            changes.append((mid, new_cat_id,  new_proc_id, want_conc))
 
     if not changes:
         st.info("Nenhuma alteração detectada.")
         return
 
     with fresh_conn() as conn:
-        with conn:
+        try:
+            # evita estado "aborted transaction" se algo anterior falhou na mesma sessão
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    
             with conn.cursor() as cur:
-                for mid, new_cat_id, new_tipo_id, new_proc_id, want_conc in changes:
+                for mid, new_cat_id, new_proc_id, want_conc in changes:
                     cur.execute(
                         """
                         UPDATE movimento_bancario
-                        SET categoria_id = %s,
-                            tipo_id = %s
+                        SET categoria_id = %s
                         WHERE id = %s
                         """,
-                        (new_cat_id, new_tipo_id, int(mid)),
+                        (new_cat_id, int(mid)),
                     )
 
                     if want_conc:
@@ -453,9 +457,20 @@ def render_conciliacao():
                             "DELETE FROM conciliacao WHERE movimento_bancario_id = %s",
                             (int(mid),),
                         )
+ 
+            # ✅ commit explícito ANTES de qualquer coisa do Streamlit
+            conn.commit()
 
+        except Exception:
+            # ✅ rollback explícito se algo deu errado
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
 
-                st.success(f"Salvo! {len(changes)} movimento(s) atualizado(s).")
-                st.cache_data.clear()
-                st.session_state["conc_force_reload"] = True
-                st.rerun()
+    # ✅ Agora sim: UI fora da transação
+    st.success(f"Salvo! {len(changes)} movimento(s) atualizado(s).")
+    st.cache_data.clear()
+    st.session_state["conc_force_reload"] = True
+    st.rerun()
