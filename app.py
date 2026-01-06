@@ -10,6 +10,15 @@ from pages.exportacao import render_exportacao
 
 from db import fetch_df_cached
 
+def get_nome_usuario() -> str:
+    # ajuste conforme o seu app:
+    # - se você guarda no session_state
+    # - ou se deriva de access_key / login
+    user = st.session_state.get("user")
+    if isinstance(user, dict) and user.get("nome"):
+        return user["nome"]
+    return st.session_state.get("user_nome") or "Usuário"
+
 
 # 1) Page config
 st.set_page_config(page_title="Treecomex • Conciliação", layout="wide")
@@ -95,6 +104,8 @@ PAGES = [
 
 
 with st.sidebar:
+    st.markdown(f"Olá, {get_nome_usuario()}.")
+    st.divider()
     st.header("Menu")
 
     if st.button("Sair"):

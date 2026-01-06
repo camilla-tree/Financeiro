@@ -11,6 +11,39 @@ from db import fetch_df_cached, fresh_conn, run_sql_returning_id
 from audit import log_action
 
 
+DEMO_FECHAMENTO = True  # <-- por enquanto fixo
+
+def render_fechamento():
+    st.header("Fechamento")
+
+    if DEMO_FECHAMENTO:
+        st.info("Fechamento em modo demonstração (não grava nem lê do banco).")
+
+        # UI “normal” (inputs)
+        empresa = st.selectbox("Empresa", ["ASTORI", "AMARTINS"])
+        mes_ref = st.date_input("Mês de referência", value=date.today())
+
+        if st.button("Gerar fechamento", use_container_width=True):
+            # retorno mock (exemplo)
+            df = pd.DataFrame([
+                {"categoria": "ARMAZENAGEM", "entrada": 4450.00, "saida": 375.00, "saldo": 4075.00},
+                {"categoria": "DESPACHANTE", "entrada": 15.00, "saida": 0.00, "saldo": 4090.00},
+            ])
+            st.success("Fechamento gerado (demonstração).")
+            st.dataframe(df, use_container_width=True)
+
+            st.download_button(
+                "Baixar CSV (demonstração)",
+                df.to_csv(index=False).encode("utf-8"),
+                file_name="fechamento_demo.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        return
+
+    # --- daqui pra baixo fica seu fechamento real (quando estiver pronto) ---
+    # ... chamadas ao banco ...
+
 # =========================
 # Excel -> DF (Rateio)
 # =========================
