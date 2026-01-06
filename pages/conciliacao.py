@@ -48,33 +48,33 @@ def render_conciliacao():
     if "conc_dt_fim" not in st.session_state:
         st.session_state["conc_dt_fim"] = today
 
+
     # Atalhos
     st.caption("Atalhos de período")
     a1, a2, a3, a4 = st.columns([1, 1, 1, 1])
+
+    def _set_periodo(dt_ini, dt_fim):
+        st.session_state["conc_dt_ini"] = dt_ini
+        st.session_state["conc_dt_fim"] = dt_fim
+        st.session_state["conc_force_reload"] = True
+        # ✅ NÃO chama st.rerun()
+
     with a1:
         if st.button("Mês atual", use_container_width=True):
-            st.session_state["conc_dt_ini"] = primeiro_dia_mes
-            st.session_state["conc_dt_fim"] = today
-            st.session_state["conc_force_reload"] = True
-            st.rerun()
+            _set_periodo(primeiro_dia_mes, today)
+
     with a2:
         if st.button("Últimos 7d", use_container_width=True):
-            st.session_state["conc_dt_ini"] = today - timedelta(days=7)
-            st.session_state["conc_dt_fim"] = today
-            st.session_state["conc_force_reload"] = True
-            st.rerun()
+            _set_periodo(today - timedelta(days=7), today)
+
     with a3:
         if st.button("Últimos 30d", use_container_width=True):
-            st.session_state["conc_dt_ini"] = today - timedelta(days=30)
-            st.session_state["conc_dt_fim"] = today
-            st.session_state["conc_force_reload"] = True
-            st.rerun()
+            _set_periodo(today - timedelta(days=30), today)
+
     with a4:
         if st.button("Últimos 90d", use_container_width=True):
-            st.session_state["conc_dt_ini"] = today - timedelta(days=90)
-            st.session_state["conc_dt_fim"] = today
-            st.session_state["conc_force_reload"] = True
-            st.rerun()
+            _set_periodo(today - timedelta(days=90), today)
+
 
     col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 2, 2])
 
@@ -108,9 +108,15 @@ def render_conciliacao():
         conta_options.append(label)
         conta_map[label] = r
 
+    # depois de montar conta_options (e antes do selectbox)
+    if conta_options:
+        if "conc_conta" in st.session_state and st.session_state["conc_conta"] not in conta_options:
+            st.session_state["conc_conta"] = conta_options[0]
+
     with col_f2:
         conta_label = st.selectbox("Conta bancária", conta_options, key="conc_conta")
         conta_bancaria_id = int(conta_map[conta_label]["conta_bancaria_id"])
+
 
     with col_f3:
         dt_ini = st.date_input("Data início", key="conc_dt_ini")  # editável
