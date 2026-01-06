@@ -252,7 +252,7 @@ def _build_pdf_relatorio(df: pd.DataFrame, ctx: RelatorioContext) -> bytes:
     story.append(resumo_tbl)
     story.append(Spacer(1, 14))
 
-    # Tabela (sem COMPLEMENTO)
+    # Tabela
     cols = ["BANCO", "DATA", "HISTÓRICO", "TIPO DE LANÇAMENTO", "CATEGORIA", "ENTRADA", "SAÍDA", "SALDO"]
 
     rows = [cols]
@@ -263,23 +263,27 @@ def _build_pdf_relatorio(df: pd.DataFrame, ctx: RelatorioContext) -> bytes:
 
         entrada = valor if tipo == "ENTRADA" else 0.0
         saida = valor if tipo == "SAIDA" else 0.0
-
         tipo_lanc = "RECEITA" if tipo == "ENTRADA" else "DESPESA"
 
         rows.append(
             [
-                str(r.get("banco_codigo") or ""),
-                _fmt_date(r.get("dt_movimento")),
-                str(r.get("descricao") or ""),
-                tipo_lanc,
-                str(r.get("categoria_nome") or ""),
-                _fmt_brl(entrada) if entrada else "",
-                _fmt_brl(saida) if saida else "",
-                _fmt_brl(saldo) if saldo is not None else "",
+                str(r.get("banco_codigo") or ""),         # ✅ BANCO
+                _fmt_date(r.get("dt_movimento")),         # DATA
+                str(r.get("descricao") or ""),            # HISTÓRICO
+                tipo_lanc,                                # TIPO DE LANÇAMENTO
+                str(r.get("categoria_nome") or ""),       # CATEGORIA
+                _fmt_brl(entrada) if entrada else "",     # ENTRADA
+                _fmt_brl(saida) if saida else "",         # SAÍDA
+                _fmt_brl(saldo) if saldo is not None else "",  # ✅ SALDO
             ]
         )
 
-    table = Table(rows, repeatRows=1, colWidths=[60, 70, 300, 110, 140, 95, 95, 95])
+    table = Table(
+        rows,
+        repeatRows=1,
+        colWidths=[60, 70, 300, 110, 140, 95, 95, 95],  # ✅ inclui BANCO e SALDO
+    )
+
     table.setStyle(
         TableStyle(
             [
@@ -291,11 +295,12 @@ def _build_pdf_relatorio(df: pd.DataFrame, ctx: RelatorioContext) -> bytes:
                 ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
                 ("FONTSIZE", (0, 1), (-1, -1), 9),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ALIGN", (1, 1), (1, -1), "CENTER"),  # data
-                ("ALIGN", (5, 1), (7, -1), "RIGHT"),  # valores
+                ("ALIGN", (1, 1), (1, -1), "CENTER"),     # DATA
+                ("ALIGN", (5, 1), (7, -1), "RIGHT"),      # ENTRADA / SAÍDA / SALDO
             ]
         )
     )
+
 
     story.append(table)
     doc.build(story)

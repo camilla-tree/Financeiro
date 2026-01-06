@@ -442,22 +442,46 @@ def render_conciliacao():
                         cur.execute(
                             """
                             INSERT INTO conciliacao (
-                                movimento_bancario_id, processo_id, status_id,
-                                regra_aplicada, probabilidade,
-                                usuario_confirmacao_id, dt_confirmacao, observacao
+                                movimento_bancario_id,
+                                processo_id,
+                                cliente_id,
+                                status_id,
+                                regra_aplicada,
+                                probabilidade,
+                                usuario_confirmacao_id,
+                                dt_confirmacao,
+                                observacao
                             )
-                            VALUES (%s,%s,%s,'MANUAL',1.0,%s,NOW(),NULL)
+                            VALUES (
+                                %s,                 -- movimento_bancario_id
+                                %s,                 -- processo_id
+                                (SELECT cliente_id FROM processo WHERE id = %s),  -- cliente_id derivado do processo
+                                %s,                 -- status_id
+                                'MANUAL',
+                                1.0,
+                                %s,                 -- usuario_confirmacao_id
+                                NOW(),
+                                NULL
+                            )
                             ON CONFLICT (movimento_bancario_id)
                             DO UPDATE SET
                                 processo_id = EXCLUDED.processo_id,
+                                cliente_id = EXCLUDED.cliente_id,
                                 status_id = EXCLUDED.status_id,
                                 regra_aplicada = 'MANUAL',
                                 probabilidade = 1.0,
                                 usuario_confirmacao_id = EXCLUDED.usuario_confirmacao_id,
                                 dt_confirmacao = NOW()
                             """,
-                            (int(mid), new_proc_id, int(st_confirmada), usuario_id),
+                            (
+                                int(mid),
+                                new_proc_id,
+                                new_proc_id,          # usado no subquery do cliente_id
+                                int(st_confirmada),
+                                usuario_id,
+                            ),
                         )
+
                     else:
                         cur.execute(
                             "DELETE FROM conciliacao WHERE movimento_bancario_id = %s",
