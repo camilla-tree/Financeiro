@@ -109,8 +109,7 @@ def _gravar_importacao(
     Grava tudo em uma transação usando UMA conexão fresh e UM cursor.
     Retorna importacao_id.
     """
-    conn = fresh_conn()
-    try:
+    with fresh_conn() as conn:
         with conn:  # commit/rollback automático
             with conn.cursor() as cur:
                 # 1) cria importação PROCESSANDO
@@ -200,16 +199,9 @@ def _gravar_importacao(
 
         return importacao_id
 
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-
 
 def _marcar_erro(importacao_id: Optional[int], hash_arquivo: str, msg: str):
-    conn = fresh_conn()
-    try:
+    with fresh_conn() as conn:
         with conn:
             with conn.cursor() as cur:
                 if importacao_id:
@@ -222,11 +214,7 @@ def _marcar_erro(importacao_id: Optional[int], hash_arquivo: str, msg: str):
                         "UPDATE extrato_importacao SET status='ERRO', mensagem_erro=%s WHERE hash_arquivo=%s",
                         (msg, hash_arquivo),
                     )
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+
 
 def _normalize_transacoes_for_db(transacoes: list[dict]) -> list[dict]:
     """
