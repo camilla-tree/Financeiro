@@ -219,18 +219,18 @@ def _build_pdf_relatorio(df: pd.DataFrame, ctx: RelatorioContext) -> bytes:
     styles = getSampleStyleSheet()
     story = []
 
-    title = Paragraph(f"<b>RELATÓRIO DE CLIENTE</b>", styles["Title"])
-    story.append(title)
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER
+    from reportlab.lib.styles import ParagraphStyle
+
+    title_style = ParagraphStyle("t", parent=styles["Title"], alignment=TA_CENTER)
+    info_style = ParagraphStyle("i", parent=styles["Normal"], alignment=TA_LEFT, fontSize=10, leading=12)
+
+    story.append(Paragraph(f"<b>CLIENTE: {ctx.cliente_nome}</b>", title_style))
+    story.append(Spacer(1, 10))
+    story.append(Paragraph(f"<b>EMPRESA:</b> {ctx.empresa_nome}", info_style))
+    story.append(Paragraph(f"<b>MÊS:</b> {ctx.mes_label}", info_style))
     story.append(Spacer(1, 8))
 
-    header = Paragraph(
-        f"<b>Cliente:</b> {ctx.cliente_nome} &nbsp;&nbsp; "
-        f"<b>Empresa:</b> {ctx.empresa_nome} &nbsp;&nbsp; "
-        f"<b>Mês:</b> {ctx.mes_label}",
-        styles["Normal"],
-    )
-    story.append(header)
-    story.append(Spacer(1, 10))
 
     resumo = [
         ["Saldo anterior", _fmt_brl(ctx.saldo_anterior)],
@@ -244,7 +244,7 @@ def _build_pdf_relatorio(df: pd.DataFrame, ctx: RelatorioContext) -> bytes:
                 ("BACKGROUND", (0, 0), (-1, -1), colors.whitesmoke),
                 ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
                 ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("ALIGN", (1, 0), (1, -1), "LEFT"),
                 ("FONTSIZE", (0, 0), (-1, -1), 10),
             ]
         )
@@ -252,10 +252,11 @@ def _build_pdf_relatorio(df: pd.DataFrame, ctx: RelatorioContext) -> bytes:
     story.append(resumo_tbl)
     story.append(Spacer(1, 14))
 
-    # Tabela
-    cols = ["BANCO", "DATA", "HISTÓRICO", "TIPO DE LANÇAMENTO", "CATEGORIA", "ENTRADA", "SAÍDA", "SALDO"]
+    cell_style = ParagraphStyle("cell", parent=styles["Normal"], fontSize=8, leading=9)
 
+    cols = ["BANCO", "DATA", "HISTÓRICO", "TIPO DE LANÇAMENTO", "CATEGORIA", "ENTRADA", "SAÍDA", "SALDO"]
     rows = [cols]
+
     for _, r in df.iterrows():
         tipo = str(r.get("tipo") or "").upper().strip()
         valor = float(r.get("valor") or 0.0)
@@ -267,42 +268,43 @@ def _build_pdf_relatorio(df: pd.DataFrame, ctx: RelatorioContext) -> bytes:
 
         rows.append(
             [
-                str(r.get("banco_codigo") or ""),         # ✅ BANCO
-                _fmt_date(r.get("dt_movimento")),         # DATA
-                str(r.get("descricao") or ""),            # HISTÓRICO
-                tipo_lanc,                                # TIPO DE LANÇAMENTO
-                str(r.get("categoria_nome") or ""),       # CATEGORIA
-                _fmt_brl(entrada) if entrada else "",     # ENTRADA
-                _fmt_brl(saida) if saida else "",         # SAÍDA
-                _fmt_brl(saldo) if saldo is not None else "",  # ✅ SALDO
+                Paragraph(str(r.get("banco_codigo") or ""), cell_style),         # BANCO
+                Paragraph(_fmt_date(r.get("dt_movimento")), cell_style),          # DATA
+                Paragraph(str(r.get("descricao") or ""), cell_style),             # HISTÓRICO (quebra linha)
+                Paragraph(tipo_lanc, cell_style),                                 # TIPO
+                Paragraph(str(r.get("categoria_nome") or ""), cell_style),        # CATEGORIA (quebra linha)
+                Paragraph(_fmt_brl(entrada) if entrada else "", cell_style),      # ENTRADA
+                Paragraph(_fmt_brl(saida) if saida else "", cell_style),          # SAÍDA
+                Paragraph(_fmt_brl(saldo) if saldo is not None else "", cell_style),  # SALDO
             ]
         )
 
+    # ✅ colWidths que CABEM na landscape(A4) com margem 36/36 (largura útil ~770)
     table = Table(
         rows,
         repeatRows=1,
-        colWidths=[60, 70, 300, 110, 140, 95, 95, 95],  # ✅ inclui BANCO e SALDO
+        colWidths=[55, 60, 260, 90, 120, 60, 60, 65],  # <- soma = 770
     )
 
     table.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#d9ead3")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, 0), 10),
+                ("FONTSIZE", (0, 0), (-1, 0), 9),
                 ("ALIGN", (0, 0), (-1, 0), "CENTER"),
                 ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ("FONTSIZE", (0, 1), (-1, -1), 9),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ALIGN", (1, 1), (1, -1), "CENTER"),     # DATA
-                ("ALIGN", (5, 1), (7, -1), "RIGHT"),      # ENTRADA / SAÍDA / SALDO
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("FONTSIZE", (0, 1), (-1, -1), 8),
+
+                ("ALIGN", (1, 1), (1, -1), "CENTER"),   # DATA
+                ("ALIGN", (5, 1), (7, -1), "RIGHT"),    # ENTRADA/SAÍDA/SALDO
             ]
         )
     )
 
-
     story.append(table)
+
     doc.build(story)
 
     return buffer.getvalue()
