@@ -20,12 +20,14 @@ def _get_database_url() -> str:
 
 def _make_conn() -> psycopg.Connection:
     url = _get_database_url()
+    kwargs = dict(prepare_threshold=0)
 
-    conn = psycopg.connect(
-        url,
-        sslmode="require",
-        prepare_threshold=0,  # desliga auto-prepared
-    )
+    # Só força sslmode se não tiver na URL
+    if "sslmode=" not in url:
+        kwargs["sslmode"] = "require"
+
+    conn = psycopg.connect(url, **kwargs)
+
 
     # Segurança extra: se a sessão foi reaproveitada pelo pooler,
     # isso remove qualquer prepared statement pendurado.
@@ -78,3 +80,32 @@ def executemany(sql: str, seq_of_params: Iterable[Tuple[Any, ...]]) -> None:
         with conn.cursor() as cur:
             cur.executemany(sql, seq_of_params)
         conn.commit()
+
+
+def run_sql(sql: str, params: Optional[Tuple[Any, ...]] = None) -> int:
+    # compatibilidade com imports antigos
+    return execute(sql, params)
+
+
+def run_sql_returning_id(sql: str, params: Optional[Tuple[Any, ...]] = None) -> int:
+    """
+    Use com INSERT ... RETURNING id (ou RETURNING alguma_coluna_id).
+    """
+    with fresh_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params or ())
+            row = cur.fetchone()
+        conn.commit()
+
+    if row is None:
+        raise RuntimeError("run_sql_returning_id: query não retornou nada. Faltou RETURNING?")
+
+    # Se vier dict-like, tenta chave 'id', senão pega o primeiro valor
+    try:
+        if isinstance(row, dict) and "id" in row:
+            return int(row["id"])
+    except Exception:
+        pass
+
+    # tupla/lista
+    return int(row[0])
