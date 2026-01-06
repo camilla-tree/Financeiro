@@ -5,7 +5,7 @@ from pages.admin import render_admin
 from pages.admin_usuarios import render_admin_usuarios
 from pages.import_pdf import render_import_pdf
 from pages.conciliacao import render_conciliacao
-from pages.fechamento import render_fechamento
+#from pages.fechamento import render_fechamento
 from pages.exportacao import render_exportacao
 
 from db import fetch_df_cached
@@ -90,7 +90,7 @@ PAGES = [
     "Importar Extrato PDF",
     "Conciliação",
     "Relatórios de Cliente",
-    "Fechamento",
+    #"Fechamento",
 ]
 
 
@@ -126,7 +126,7 @@ elif page == "Importar Extrato PDF":
     render_import_pdf()
 elif page == "Conciliação":
     render_conciliacao()
-elif page == "Relatórios de Cliente":
-    render_exportacao()
 else:
+    render_exportacao()
+#else:
     render_fechamento()
