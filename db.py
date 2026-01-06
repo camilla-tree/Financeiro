@@ -32,16 +32,13 @@ def _normalize_url(url: str) -> str:
 def _new_conn() -> psycopg.Connection:
     url = _normalize_url(_get_database_url())
 
-    # IMPORTANTE:
-    # - prepare_threshold=0: desliga auto-prepared
-    # - prepared_statement_cache_size=0: desliga cache de prepared statements
-    conn = psycopg.connect(
-        url,
-        prepare_threshold=0,
-        prepared_statement_cache_size=0,
-    )
+    try:
+        # tentativa 1: com options
+        conn = psycopg.connect(url, prepare_threshold=0, options="-c plan_cache_mode=force_generic_plan")
+    except TypeError:
+        # tentativa 2: ambiente que não aceita "options"
+        conn = psycopg.connect(url, prepare_threshold=0)
 
-    # Só uma limpeza defensiva na CRIAÇÃO da conexão (não em toda query)
     try:
         with conn.cursor() as cur:
             cur.execute("DEALLOCATE ALL;")
@@ -53,6 +50,7 @@ def _new_conn() -> psycopg.Connection:
             pass
 
     return conn
+
 
 
 def _get_session_conn() -> psycopg.Connection:
