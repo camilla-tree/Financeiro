@@ -1,116 +1,80 @@
+from __future__ import annotations
+
 import os
-import psycopg
+from contextlib import contextmanager
+from typing import Any, Iterable, Optional, Tuple
+
 import pandas as pd
+import psycopg
 import streamlit as st
-from dotenv import load_dotenv
-from streamlit.errors import StreamlitSecretNotFoundError
 
 
-
-load_dotenv()
-
-
-def _get_secret(name: str, default: str = "") -> str:
-    v = os.getenv(name)
-    if v:
-        return v
-    try:
-        return st.secrets.get(name, default)
-    except StreamlitSecretNotFoundError:
-        return default
+def _get_database_url() -> str:
+    # prioridade: Streamlit secrets -> env var -> fallback
+    if "DATABASE_URL" in st.secrets:
+        return str(st.secrets["DATABASE_URL"])
+    if os.getenv("DATABASE_URL"):
+        return str(os.getenv("DATABASE_URL"))
+    raise RuntimeError("DATABASE_URL não encontrado (st.secrets ou env var).")
 
 
-def _make_conn():
-    url = _get_secret("DATABASE_URL")
-    if not url:
-        raise RuntimeError("Defina DATABASE_URL via .env ou st.secrets.")
+def _make_conn() -> psycopg.Connection:
+    url = _get_database_url()
 
     conn = psycopg.connect(
         url,
         sslmode="require",
-        prepare_threshold=0,  # desliga prepared statements automáticos
+        prepare_threshold=0,  # desliga auto-prepared
     )
-    conn.autocommit = True
-    return conn
 
-
-def db_conn():
-    conn = st.session_state.get("db_conn")
-    if conn is None:
-        conn = _make_conn()
-        st.session_state["db_conn"] = conn
-    return conn
-
-
-def _reset_conn():
+    # Segurança extra: se a sessão foi reaproveitada pelo pooler,
+    # isso remove qualquer prepared statement pendurado.
     try:
-        conn = st.session_state.get("db_conn")
-        if conn is not None:
-            conn.close()
+        with conn.cursor() as cur:
+            cur.execute("DEALLOCATE ALL;")
+        conn.commit()
     except Exception:
-        pass
-    st.session_state["db_conn"] = _make_conn()
+        # Se não suportar por algum motivo, ignora.
+        try:
+            conn.rollback()
+        except Exception:
+            pass
 
-
-def fetch_df(sql: str, params: tuple = ()) -> pd.DataFrame:
-    try:
-        conn = db_conn()
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-            cols = [d[0] for d in cur.description] if cur.description else []
-            rows = cur.fetchall() if cols else []
-        return pd.DataFrame(rows, columns=cols)
-
-    except psycopg.errors.DuplicatePreparedStatement:
-        # conexão entrou em estado ruim -> recria e tenta 1 vez
-        _reset_conn()
-        conn = db_conn()
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-            cols = [d[0] for d in cur.description] if cur.description else []
-            rows = cur.fetchall() if cols else []
-        return pd.DataFrame(rows, columns=cols)
-
-
-def run_sql(sql: str, params: tuple = ()) -> None:
-    try:
-        conn = db_conn()
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-
-    except psycopg.errors.DuplicatePreparedStatement:
-        _reset_conn()
-        conn = db_conn()
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-
-
-def run_sql_returning_id(sql: str, params: tuple = ()) -> int:
-    try:
-        conn = db_conn()
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-            new_id = cur.fetchone()[0]
-        return int(new_id)
-
-    except psycopg.errors.DuplicatePreparedStatement:
-        _reset_conn()
-        conn = db_conn()
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-            new_id = cur.fetchone()[0]
-        return int(new_id)
-
-def fresh_conn():
-    """Conexão nova para operações pesadas (ex.: import)."""
-    url = _get_secret("DATABASE_URL")
-    if not url:
-        raise RuntimeError("Defina DATABASE_URL via .env ou st.secrets.")
-
-    conn = psycopg.connect(
-        url,
-        sslmode="require",
-        prepare_threshold=0,
-    )
-    conn.autocommit = False  # vamos controlar commit/rollback no import
     return conn
+
+
+@contextmanager
+def fresh_conn():
+    conn = _make_conn()
+    try:
+        yield conn
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def fetch_df(sql: str, params: Optional[Tuple[Any, ...]] = None) -> pd.DataFrame:
+    with fresh_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params or ())
+            rows = cur.fetchall()
+            cols = [c.name for c in cur.description] if cur.description else []
+    return pd.DataFrame(rows, columns=cols)
+
+
+def execute(sql: str, params: Optional[Tuple[Any, ...]] = None) -> int:
+    with fresh_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params or ())
+            rowcount = cur.rowcount
+        conn.commit()
+    return rowcount
+
+
+def executemany(sql: str, seq_of_params: Iterable[Tuple[Any, ...]]) -> None:
+    with fresh_conn() as conn:
+        with conn.cursor() as cur:
+            cur.executemany(sql, seq_of_params)
+        conn.commit()
