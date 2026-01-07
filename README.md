@@ -100,14 +100,16 @@ Financeiro/
 │   └── ...
 ├── requirements.txt
 └── README.md
+```
 
 ## ⚙️ Configuração do Ambiente
 Variáveis obrigatórias
 
 O sistema requer a variável:
+
 ```text
 DATABASE_URL=postgresql://...
-
+```
 
 Pode ser definida via:
 
@@ -116,9 +118,10 @@ st.secrets (Streamlit Cloud)
 variável de ambiente local
 
 ## ▶️ Executar Localmente
-
+```text
 pip install -r requirements.txt
 streamlit run app.py
+```
 
 ## 🧪 Modo Demonstração
 
@@ -144,15 +147,15 @@ Estrutura preparada para evolução de permissões e perfis
 
 ## 🗺️ Próximos Passos (Fase 2)
 
-Fechamento financeiro real
+- Fechamento financeiro real
 
-Conciliação automática por regras
+- Conciliação automática por regras
 
-Dashboards consolidados
+- Dashboards consolidados
 
-Controle de permissões por perfil
+- Controle de permissões por perfil
 
-Histórico de alterações por registro
+- Histórico de alterações por registro
 
 ## 👩‍💻 Autoria
 
