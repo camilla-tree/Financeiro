@@ -7,6 +7,7 @@ from typing import Any, Iterable, Optional, Tuple
 import pandas as pd
 import psycopg
 import streamlit as st
+from typing import Any, Dict, List, Optional
 
 
 # -----------------------------
@@ -147,3 +148,116 @@ def reset_conn():
     except Exception:
         pass
     st.session_state["_db_conn"] = None
+
+
+
+# FECHAMENTO
+def upsert_fechamento(data: Dict[str, Any]) -> int:
+    """
+    Cria/atualiza fechamento na tabela existente (PK = id).
+    Retorna id.
+    """
+    if data.get("id"):
+        sql = """
+        update fechamento
+        set
+          data = %(data)s,
+          empresa = %(empresa)s,
+          cliente = %(cliente)s,
+          referencia = %(referencia)s,
+          valor_fob_usd = %(valor_fob_usd)s,
+          frete_usd = %(frete_usd)s,
+          adicional_usd = %(adicional_usd)s,
+          seguro_usd = %(seguro_usd)s,
+          taxa_conversao = %(taxa_conversao)s,
+          origem = %(origem)s,
+          modal = %(modal)s,
+          destino = %(destino)s,
+          qtde_container = %(qtde_container)s,
+          bl_awb = %(bl_awb)s
+        where id = %(id)s
+        returning id;
+        """
+        df = fetch_df(sql, data)
+        return int(df.iloc[0]["id"])
+
+    sql = """
+    insert into fechamento (
+      data, empresa, cliente, referencia,
+      valor_fob_usd, frete_usd, adicional_usd, seguro_usd, taxa_conversao,
+      origem, modal, destino, qtde_container, bl_awb
+    ) values (
+      %(data)s, %(empresa)s, %(cliente)s, %(referencia)s,
+      %(valor_fob_usd)s, %(frete_usd)s, %(adicional_usd)s, %(seguro_usd)s, %(taxa_conversao)s,
+      %(origem)s, %(modal)s, %(destino)s, %(qtde_container)s, %(bl_awb)s
+    )
+    returning id;
+    """
+    df = fetch_df(sql, data)
+    return int(df.iloc[0]["id"])
+
+
+def list_fechamentos(limit: int = 50) -> pd.DataFrame:
+    sql = """
+    select
+      id,
+      data,
+      empresa,
+      cliente,
+      referencia,
+      valor_fob_usd,
+      frete_usd,
+      adicional_usd,
+      seguro_usd,
+      taxa_conversao,
+      origem,
+      modal,
+      destino,
+      qtde_container,
+      bl_awb,
+      updated_at
+    from fechamento
+    order by coalesce(updated_at, now()) desc
+    limit %(limit)s;
+    """
+    return fetch_df(sql, {"limit": limit})
+
+
+def get_fechamento(id_: int) -> Optional[Dict[str, Any]]:
+    df = fetch_df("select * from fechamento where id = %(id)s", {"id": id_})
+    if df.empty:
+        return None
+    return df.iloc[0].to_dict()
+
+
+def get_despesas(fechamento_id: int) -> pd.DataFrame:
+    return fetch_df(
+        """
+        select id, ordem, descricao, valor_brl, estimado
+        from fechamento_despesa
+        where fechamento_id = %(id)s
+        order by ordem asc, id asc;
+        """,
+        {"id": fechamento_id},
+    )
+
+
+def replace_despesas(fechamento_id: int, despesas: List[Dict[str, Any]]) -> None:
+    with fresh_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("delete from fechamento_despesa where fechamento_id = %s", (fechamento_id,))
+            for d in despesas:
+                cur.execute(
+                    """
+                    insert into fechamento_despesa (fechamento_id, ordem, descricao, valor_brl, estimado)
+                    values (%s, %s, %s, %s, %s)
+                    """,
+                    (
+                        fechamento_id,
+                        int(d.get("ordem", 0) or 0),
+                        str(d.get("descricao", "")).strip(),
+                        float(d.get("valor_brl", 0) or 0),
+                        bool(d.get("estimado", False)),
+                    ),
+                )
+        conn.commit()
