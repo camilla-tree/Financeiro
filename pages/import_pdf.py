@@ -20,6 +20,8 @@ from parsers.itau import parse_itau
 from parsers.nubank_csv import parse_nubank_csv
 from parsers.santander import parse_santander
 from parsers.sicredi import parse_sicredi
+from parsers.bb import parse_bb
+
 
 
 PARSERS = {
@@ -29,6 +31,8 @@ PARSERS = {
     "NUBANK": parse_nubank_csv,
     "SANTANDER": parse_santander,
     "SICREDI": parse_sicredi,
+    "BB": parse_bb,
+
 }
 
 
