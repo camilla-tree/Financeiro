@@ -3,6 +3,10 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Optional, Any, Tuple
 
+import psycopg
+import re
+
+
 import streamlit as st
 import pandas as pd
 
@@ -26,6 +30,33 @@ def _safe_int(v: Any) -> Optional[int]:
         return int(v)
     except Exception:
         return None
+    
+def _norm_upper(s: str) -> str:
+    s = (s or "").strip()
+    s = re.sub(r"\s+", " ", s)
+    return s.upper()
+
+def _run_sql(sql: str, params=None):
+    with fresh_conn() as conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, params or ())
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+def _safe_delete_categoria(cat_id: int) -> bool:
+    try:
+        _run_sql("DELETE FROM categoria_financeira WHERE id=%s", (int(cat_id),))
+        return True
+    except psycopg.errors.ForeignKeyViolation:
+        st.warning(
+            f"Não é possível excluir a categoria (id={cat_id}) pois há lançamentos que dependem dela. "
+            f"Considere desativar."
+        )
+        return False
+
 
 
 def render_conciliacao():
@@ -189,6 +220,77 @@ def render_conciliacao():
     with colY:
         processo_pick = st.selectbox("Processo", proc_opt, key="conc_processo")
 
+    st.markdown("### Categorias financeiras")
+    with st.expander("Adicionar / editar / excluir categorias", expanded=False):
+        col1, col2 = st.columns([1, 2])
+
+        with col1:
+            st.markdown("#### Nova categoria")
+            cat_nome = st.text_input("nome*", key="catfin_nome")
+            cat_ativo = st.checkbox("ativo", value=True, key="catfin_ativo")
+
+            if st.button("Cadastrar categoria", type="primary", key="catfin_btn"):
+                if not cat_nome.strip():
+                    st.error("nome é obrigatório.")
+                else:
+                    _run_sql(
+                        "INSERT INTO categoria_financeira (nome, ativo) VALUES (%s,%s)",
+                        (_norm_upper(cat_nome), bool(cat_ativo)),
+                    )
+                    st.success("Categoria cadastrada!")
+                    st.cache_data.clear()
+                    st.rerun()
+
+        with col2:
+            st.markdown("#### Categorias (edite inline e clique em salvar)")
+            df_cat_all = fetch_df_cached(
+                "SELECT id, nome, ativo FROM categoria_financeira ORDER BY nome"
+            )
+
+            if df_cat_all.empty:
+                st.info("Sem categorias.")
+            else:
+                df_view = df_cat_all.copy()
+                if "_delete" not in df_view.columns:
+                    df_view["_delete"] = False
+
+                edited_cat = st.data_editor(
+                    df_view,
+                    use_container_width=True,
+                    hide_index=True,
+                    num_rows="fixed",
+                    column_config={
+                        "id": st.column_config.NumberColumn("id", disabled=True),
+                        "nome": st.column_config.TextColumn("nome"),
+                        "ativo": st.column_config.CheckboxColumn("ativo"),
+                        "_delete": st.column_config.CheckboxColumn("Excluir?"),
+                    },
+                    key="catfin_editor",
+                )
+
+                if st.button("Salvar alterações (categorias)", key="catfin_save"):
+                    # deletes
+                    ids_delete = edited_cat.loc[edited_cat["_delete"] == True, "id"].tolist()
+                    for _id in ids_delete:
+                        _id = int(_id)
+                        if _safe_delete_categoria(_id):
+                            pass
+
+                    # updates
+                    upd = edited_cat.loc[edited_cat["_delete"] == False].drop(columns=["_delete"])
+                    for _, r in upd.iterrows():
+                        _run_sql(
+                            """
+                            UPDATE categoria_financeira
+                            SET nome=%s, ativo=%s
+                            WHERE id=%s
+                            """,
+                            (_norm_upper(r["nome"]), bool(r["ativo"]), int(r["id"])),
+                        )
+
+                    st.success("Alterações aplicadas.")
+                    st.cache_data.clear()
+                    st.rerun()
 
 
     df_cat = fetch_df_cached("SELECT id, nome FROM categoria_financeira WHERE ativo=true ORDER BY nome")
