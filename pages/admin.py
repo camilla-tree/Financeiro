@@ -3,12 +3,23 @@ import re
 import streamlit as st
 from db import fetch_df_cached, run_sql, run_sql_returning_id
 from audit import log_action
+import psycopg
+
 
 
 def norm_upper(s: str) -> str:
     s = (s or "").strip()
     s = re.sub(r"\s+", " ", s)
     return s.upper()
+
+def _safe_delete(sql: str, params: tuple, label: str, _id: int) -> bool:
+    try:
+        run_sql(sql, params)
+        return True
+    except psycopg.errors.ForeignKeyViolation:
+        st.warning(f"Não é possível excluir {label} (id={_id}) pois há lançamentos que dependem dele, considere inativá-lo.")
+        return False
+
 
 
 def _editor_with_delete(df, key: str, extra_column_config=None):
@@ -53,7 +64,9 @@ def render_admin():
             st.markdown("### Nova empresa")
             nome = st.text_input("nome*", key="emp_nome")
             cnpj = st.text_input("cnpj (opcional)", key="emp_cnpj")
-            situacao = st.text_input("situacao (opcional)", key="emp_situacao")
+            ativa = st.checkbox("ativa", value=True, key="emp_ativa")
+            situacao = "ATIVA" if ativa else "INATIVA"
+
             diretor = st.text_input("diretor (opcional)", key="emp_diretor")
 
             if st.button("Cadastrar empresa", type="primary", key="emp_btn"):
@@ -75,13 +88,19 @@ def render_admin():
         with colB:
             st.markdown("### Empresas (edite inline e clique em salvar)")
             df = fetch_df_cached("SELECT id, nome, cnpj, situacao, diretor FROM empresa ORDER BY nome")
-            edited = _editor_with_delete(df, key="emp_editor")
+            df["ativa"] = df["situacao"].fillna("INATIVA").str.upper().eq("ATIVA")
+
+            view = df.drop(columns=["situacao"]).copy()  # tira texto
+            edited = _editor_with_delete(view, key="emp_editor")
+
 
             if edited is not None and st.button("Salvar alterações", key="emp_save"):
                 ids_delete = edited.loc[edited["_delete"] == True, "id"].tolist()
                 for _id in ids_delete:
-                    run_sql("DELETE FROM empresa WHERE id=%s", (int(_id),))
-                    log_action("DELETE", "empresa", int(_id))
+                    _id = int(_id)
+                    if _safe_delete("DELETE FROM empresa WHERE id=%s", (_id,), "a empresa", _id):
+                        log_action("DELETE", "empresa", _id)
+
 
                 upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
                 for _, r in upd.iterrows():
@@ -91,9 +110,15 @@ def render_admin():
                         SET nome=%s, cnpj=%s, situacao=%s, diretor=%s
                         WHERE id=%s
                         """,
-                        (norm_upper(r["nome"]), (r["cnpj"] or None), (r["situacao"] or None), (r["diretor"] or None), int(r["id"])),
-                    )
-                    log_action("UPDATE", "empresa", int(r["id"]), {"nome": r["nome"], "cnpj": r["cnpj"], "situacao": r["situacao"], "diretor": r["diretor"]})
+                        (
+                            norm_upper(r["nome"]),
+                            (r["cnpj"] or None),
+                            ("ATIVA" if bool(r["ativa"]) else "INATIVA"),
+                            (r["diretor"] or None),
+                            int(r["id"]),
+                        )
+                   )
+                    log_action("UPDATE", "empresa", int(r["id"]), {"nome": r["nome"], "cnpj": r["cnpj"], "situacao": ("ATIVA" if bool(r["ativa"]) else "INATIVA"), "diretor": r["diretor"]})
 
                 st.success("Alterações aplicadas.")
                 st.cache_data.clear()
@@ -134,8 +159,10 @@ def render_admin():
             if edited is not None and st.button("Salvar alterações", key="cli_save"):
                 ids_delete = edited.loc[edited["_delete"] == True, "id"].tolist()
                 for _id in ids_delete:
-                    run_sql("DELETE FROM cliente WHERE id=%s", (int(_id),))
-                    log_action("DELETE", "cliente", int(_id))
+                    _id = int(_id)
+                    if _safe_delete("DELETE FROM cliente WHERE id=%s", (_id,), "o cliente", _id):
+                        log_action("DELETE", "cliente", _id)
+
 
                 upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
                 for _, r in upd.iterrows():
@@ -269,8 +296,10 @@ def render_admin():
                     if edited is not None and st.button("Salvar alterações", key="proc_save"):
                         ids_delete = edited.loc[edited["_delete"] == True, "id"].tolist()
                         for _id in ids_delete:
-                            run_sql("DELETE FROM processo WHERE id=%s", (int(_id),))
-                            log_action("DELETE", "processo", int(_id))
+                            _id = int(_id)
+                            if _safe_delete("DELETE FROM processo WHERE id=%s", (_id,), "o processo", _id):
+                                log_action("DELETE", "processo", _id)
+
 
                         upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
                         for _, r in upd.iterrows():
@@ -397,8 +426,10 @@ def render_admin():
                     if edited is not None and st.button("Salvar alterações", key="cb_save"):
                         ids_delete = edited.loc[edited["_delete"] == True, "id"].tolist()
                         for _id in ids_delete:
-                            run_sql("DELETE FROM conta_bancaria WHERE id=%s", (int(_id),))
-                            log_action("DELETE", "conta_bancaria", int(_id))
+                            _id = int(_id)
+                            if _safe_delete("DELETE FROM conta_bancaria WHERE id=%s", (_id,), "a conta bancária", _id):
+                                log_action("DELETE", "conta_bancaria", _id)
+
 
                         upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
                         for _, r in upd.iterrows():

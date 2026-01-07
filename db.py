@@ -121,8 +121,17 @@ def fetch_df_cached(sql: str, params: Optional[Tuple[Any, ...]] = None) -> pd.Da
 # -----------------------------
 # Compatibilidade
 # -----------------------------
-def run_sql(sql: str, params: Optional[Tuple[Any, ...]] = None) -> int:
-    return execute(sql, params)
+def run_sql(sql: str, params=None):
+    # fresh_conn() é um context manager
+    with fresh_conn() as conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, params or ())
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
 
 
 def run_sql_returning_id(sql: str, params: Optional[Tuple[Any, ...]] = None) -> int:
