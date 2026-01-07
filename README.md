@@ -100,3 +100,62 @@ Financeiro/
 │   └── ...
 ├── requirements.txt
 └── README.md
+
+## ⚙️ Configuração do Ambiente
+Variáveis obrigatórias
+
+O sistema requer a variável:
+```text
+DATABASE_URL=postgresql://...
+
+
+Pode ser definida via:
+
+st.secrets (Streamlit Cloud)
+
+variável de ambiente local
+
+## ▶️ Executar Localmente
+
+pip install -r requirements.txt
+streamlit run app.py
+
+## 🧪 Modo Demonstração
+
+Algumas funcionalidades (como Fechamento) podem operar em modo demonstração, exibindo resultados simulados sem persistência, permitindo:
+
+apresentações
+
+validação de layout
+
+testes de navegação
+
+## 🔒 Segurança e Auditoria
+
+Não há exclusão física de dados críticos
+
+Conciliações registram:
+
+usuário
+
+data/hora
+
+Estrutura preparada para evolução de permissões e perfis
+
+## 🗺️ Próximos Passos (Fase 2)
+
+Fechamento financeiro real
+
+Conciliação automática por regras
+
+Dashboards consolidados
+
+Controle de permissões por perfil
+
+Histórico de alterações por registro
+
+## 👩‍💻 Autoria
+
+Projeto desenvolvido por Hianara Camilla
+com foco em dados, automação e sistemas financeiros,
+priorizando entregas rápidas, estabilidade e clareza para o negócio.
