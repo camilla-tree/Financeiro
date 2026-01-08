@@ -95,18 +95,28 @@ def fetch_df(sql: str, params: Optional[Tuple[Any, ...]] = None) -> pd.DataFrame
 
 def execute(sql: str, params: Optional[Tuple[Any, ...]] = None) -> int:
     with fresh_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, params or ())
-            rowcount = cur.rowcount
-        conn.commit()
-    return rowcount
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, params or ())
+                rowcount = cur.rowcount
+            conn.commit()
+            return rowcount
+        except Exception:
+            conn.rollback()
+            raise
+
 
 
 def executemany(sql: str, seq_of_params: Iterable[Tuple[Any, ...]]) -> None:
     with fresh_conn() as conn:
-        with conn.cursor() as cur:
-            cur.executemany(sql, seq_of_params)
-        conn.commit()
+        try:
+            with conn.cursor() as cur:
+                cur.executemany(sql, seq_of_params)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
 
 
 # -----------------------------
@@ -136,14 +146,21 @@ def run_sql(sql: str, params=None):
 
 def run_sql_returning_id(sql: str, params: Optional[Tuple[Any, ...]] = None) -> int:
     with fresh_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, params or ())
-            row = cur.fetchone()
-        conn.commit()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, params or ())
+                row = cur.fetchone()
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
     if row is None:
         raise RuntimeError("run_sql_returning_id: query não retornou nada. Faltou RETURNING?")
     return int(row[0])
+
+
+
 
 
 # -----------------------------

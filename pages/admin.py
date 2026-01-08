@@ -73,17 +73,22 @@ def render_admin():
                 if not nome.strip():
                     st.error("nome é obrigatório.")
                 else:
-                    new_id = run_sql_returning_id(
-                        """
-                        INSERT INTO empresa (nome, cnpj, situacao, diretor)
-                        VALUES (%s,%s,%s,%s)
-                        RETURNING id
-                        """,
-                        (norm_upper(nome), cnpj.strip() or None, situacao.strip() or None, diretor.strip() or None),
-                    )
-                    log_action("INSERT", "empresa", new_id, {"nome": nome, "cnpj": cnpj, "situacao": situacao, "diretor": diretor})
-                    st.success(f"Empresa cadastrada! id={new_id}")
-                    st.cache_data.clear()
+                    try:
+                        new_id = run_sql_returning_id(
+                            """
+                            INSERT INTO empresa (nome, cnpj, situacao, diretor)
+                            VALUES (%s,%s,%s,%s)
+                            RETURNING id
+                            """,
+                            (norm_upper(nome), cnpj.strip() or None, situacao.strip() or None, diretor.strip() or None),
+                        )
+                        log_action("INSERT", "empresa", new_id, {"nome": nome, "cnpj": cnpj, "situacao": situacao, "diretor": diretor})
+                        st.success(f"Empresa cadastrada! id={new_id}")
+                        st.cache_data.clear()
+                        st.rerun()
+                    except psycopg.errors.UniqueViolation:
+                        st.warning("Já existe uma empresa com esse NOME e/ou CNPJ. Verifique antes de cadastrar.")
+
 
         with colB:
             st.markdown("### Empresas (edite inline e clique em salvar)")
@@ -104,22 +109,26 @@ def render_admin():
 
                 upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
                 for _, r in upd.iterrows():
-                    run_sql(
-                        """
-                        UPDATE empresa
-                        SET nome=%s, cnpj=%s, situacao=%s, diretor=%s
-                        WHERE id=%s
-                        """,
-                        (
-                            norm_upper(r["nome"]),
-                            (r["cnpj"] or None),
-                            ("ATIVA" if bool(r["ativa"]) else "INATIVA"),
-                            (r["diretor"] or None),
-                            int(r["id"]),
+                    try:
+                        run_sql(
+                            """
+                            UPDATE empresa
+                            SET nome=%s, cnpj=%s, situacao=%s, diretor=%s
+                            WHERE id=%s
+                            """,
+                            (
+                                norm_upper(r["nome"]),
+                                (r["cnpj"] or None),
+                                ("ATIVA" if bool(r["ativa"]) else "INATIVA"),
+                                (r["diretor"] or None),
+                                int(r["id"]),
+                            )
                         )
-                   )
-                    log_action("UPDATE", "empresa", int(r["id"]), {"nome": r["nome"], "cnpj": r["cnpj"], "situacao": ("ATIVA" if bool(r["ativa"]) else "INATIVA"), "diretor": r["diretor"]})
-
+                        log_action("UPDATE", "empresa", int(r["id"]), {"nome": r["nome"], "cnpj": r["cnpj"], "situacao": ("ATIVA" if bool(r["ativa"]) else "INATIVA"), "diretor": r["diretor"]})
+                    except psycopg.errors.UniqueViolation:
+                            st.warning(f"Não foi possível atualizar a empresa id={int(r['id'])}. "                                "Já existe outra empresa com esse NOME e/ou CNPJ."
+                                       "Já existe outra empresa com esse NOME e/ou CNPJ."
+                            )
                 st.success("Alterações aplicadas.")
                 st.cache_data.clear()
 
@@ -139,17 +148,22 @@ def render_admin():
                 if not nome.strip():
                     st.error("nome é obrigatório.")
                 else:
-                    new_id = run_sql_returning_id(
-                        """
-                        INSERT INTO cliente (nome, dt_inicio_contrato, ativo)
-                        VALUES (%s,%s,%s)
-                        RETURNING id
-                        """,
-                        (norm_upper(nome), dt_inicio, bool(ativo)),
-                    )
-                    log_action("INSERT", "cliente", new_id, {"nome": nome, "dt_inicio_contrato": str(dt_inicio), "ativo": bool(ativo)})
-                    st.success(f"Cliente cadastrado! id={new_id}")
-                    st.cache_data.clear()
+                    try:
+                        new_id = run_sql_returning_id(
+                            """
+                            INSERT INTO cliente (nome, dt_inicio_contrato, ativo)
+                            VALUES (%s,%s,%s)
+                            RETURNING id
+                            """,
+                            (norm_upper(nome), dt_inicio, bool(ativo)),
+                        )
+                        log_action("INSERT", "cliente", new_id, {"nome": nome, "dt_inicio_contrato": str(dt_inicio), "ativo": bool(ativo)})
+                        st.success(f"Cliente cadastrado! id={new_id}")
+                        st.cache_data.clear()
+                        st.rerun()
+                    except psycopg.errors.UniqueViolation:
+                        st.warning("Já existe um cliente com esse NOME. Verifique antes de cadastrar.")
+
 
         with colB:
             st.markdown("### Clientes (edite inline e clique em salvar)")
@@ -222,32 +236,37 @@ def render_admin():
                     if not referencia.strip():
                         st.error("referencia é obrigatória.")
                     else:
-                        new_id = run_sql_returning_id(
-                            """
-                            INSERT INTO processo (
-                              referencia, empresa_id, cliente_id,
-                              data_registro, di, canal, bl, invoice,
-                              status_id, observacao
+                        try:
+                            new_id = run_sql_returning_id(
+                                """
+                                INSERT INTO processo (
+                                referencia, empresa_id, cliente_id,
+                                data_registro, di, canal, bl, invoice,
+                                status_id, observacao
+                                )
+                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                                RETURNING id
+                                """,
+                                (
+                                    norm_upper(referencia),
+                                    int(emp_id_by_name[emp_nome]),
+                                    int(cli_id_by_name[cli_nome]),
+                                    data_registro,
+                                    di.strip() or None,
+                                    canal.strip() or None,
+                                    bl.strip() or None,
+                                    invoice.strip() or None,
+                                    int(status_id_by_name[status_nome]),
+                                    obs.strip() or None,
+                                ),
                             )
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                            RETURNING id
-                            """,
-                            (
-                                norm_upper(referencia),
-                                int(emp_id_by_name[emp_nome]),
-                                int(cli_id_by_name[cli_nome]),
-                                data_registro,
-                                di.strip() or None,
-                                canal.strip() or None,
-                                bl.strip() or None,
-                                invoice.strip() or None,
-                                int(status_id_by_name[status_nome]),
-                                obs.strip() or None,
-                            ),
-                        )
-                        log_action("INSERT", "processo", new_id, {"referencia": referencia, "empresa": emp_nome, "cliente": cli_nome, "status": status_nome})
-                        st.success(f"Processo cadastrado! id={new_id}")
-                        st.cache_data.clear()
+                            log_action("INSERT", "processo", new_id, {"referencia": referencia, "empresa": emp_nome, "cliente": cli_nome, "status": status_nome})
+                            st.success(f"Processo cadastrado! id={new_id}")
+                            st.cache_data.clear()
+                            st.rerun()
+                        except psycopg.errors.UniqueViolation:
+                            st.warning("Já existe um processo com essa REFERÊNCIA (possivelmente para essa empresa/cliente).")
+
 
             with colB:
                 st.markdown("### Processos (edite inline e clique em salvar)")
@@ -369,24 +388,28 @@ def render_admin():
                 ativa = st.checkbox("ativa", value=True, key="cb_ativa")
 
                 if st.button("Cadastrar conta", type="primary", key="cb_btn"):
-                    new_id = run_sql_returning_id(
-                        """
-                        INSERT INTO conta_bancaria (banco_id, empresa_id, apelido, agencia, numero, ativa)
-                        VALUES (%s,%s,%s,%s,%s,%s)
-                        RETURNING id
-                        """,
-                        (
-                            int(banco_id_by_code[banco_codigo]),
-                            int(emp_id_by_name[emp_nome]),
-                            apelido.strip() or None,
-                            agencia.strip() or None,
-                            numero.strip() or None,
-                            bool(ativa),
-                        ),
-                    )
-                    log_action("INSERT", "conta_bancaria", new_id, {"empresa": emp_nome, "banco": banco_codigo, "apelido": apelido, "agencia": agencia, "numero": numero})
-                    st.success(f"Conta cadastrada! id={new_id}")
-                    st.cache_data.clear()
+                    try:
+                        new_id = run_sql_returning_id(
+                            """
+                            INSERT INTO conta_bancaria (banco_id, empresa_id, apelido, agencia, numero, ativa)
+                            VALUES (%s,%s,%s,%s,%s,%s)
+                            RETURNING id
+                            """,
+                            (
+                                int(banco_id_by_code[banco_codigo]),
+                                int(emp_id_by_name[emp_nome]),
+                                apelido.strip() or None,
+                                agencia.strip() or None,
+                                numero.strip() or None,
+                                bool(ativa),
+                            ),
+                        )
+                        log_action("INSERT", "conta_bancaria", new_id, {"empresa": emp_nome, "banco": banco_codigo, "apelido": apelido, "agencia": agencia, "numero": numero})
+                        st.success(f"Conta cadastrada! id={new_id}")
+                        st.cache_data.clear()
+                        st.rerun()
+                    except psycopg.errors.UniqueViolation:
+                        st.warning("Já existe uma conta bancária com esse BANCO e/ou NÚMERO para essa EMPRESA. Verifique antes de cadastrar.")
 
             with colB:
                 st.markdown("### Contas (edite inline e clique em salvar)")
