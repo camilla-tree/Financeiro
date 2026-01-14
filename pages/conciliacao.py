@@ -233,13 +233,36 @@ def render_conciliacao():
                 if not cat_nome.strip():
                     st.error("nome é obrigatório.")
                 else:
-                    _run_sql(
-                        "INSERT INTO categoria_financeira (nome, ativo) VALUES (%s,%s)",
-                        (_norm_upper(cat_nome), bool(cat_ativo)),
-                    )
-                    st.success("Categoria cadastrada!")
+                    try:
+                        row = None
+                        with fresh_conn() as conn:
+                            with conn.cursor() as cur:
+                                cur.execute(
+                                    """
+                                    INSERT INTO categoria_financeira (nome, ativo)
+                                    VALUES (%s, %s)
+                                    ON CONFLICT (nome) DO NOTHING
+                                    RETURNING id
+                                    """,
+                                    (_norm_upper(cat_nome), bool(cat_ativo)),
+                                )
+                                row = cur.fetchone()
+                            conn.commit()
+
+                        if row:
+                            st.success("Categoria cadastrada!")
+                        else:
+                            st.warning("Categoria já existe.")
+
+                    except Exception as e:
+                        st.error("Erro ao salvar categoria.")
+                        st.exception(e)
+
                     st.cache_data.clear()
+                    st.session_state["catfin_nome"] = ""
+                    st.session_state["catfin_ativo"] = True
                     st.rerun()
+
 
         with col2:
             st.markdown("#### Categorias (edite inline e clique em salvar)")
@@ -438,8 +461,9 @@ def render_conciliacao():
             "Descrição": df_mov["descricao"].astype(str),
             "Valor": df_mov["valor"],
             "Tipo": df_mov["tipo_id"].apply(_tipo_label),
-
+            "Observação": df_mov["observacao"].fillna("").astype(str),
             "Categoria": df_mov["categoria_id"].apply(_cat_label),
+
 
             "Processo": df_mov["processo_id"].apply(_proc_label),
 
@@ -460,7 +484,8 @@ def render_conciliacao():
             "Descrição": st.column_config.TextColumn("Descrição", disabled=True),
             "Valor": st.column_config.NumberColumn("Valor", disabled=True, format="%.2f"),
             "Tipo": st.column_config.SelectboxColumn("Tipo", options=tipo_labels, required=False),
-            
+            "Observação": st.column_config.TextColumn("Observação"),
+
             "Categoria": st.column_config.SelectboxColumn("Categoria", options=cat_labels, required=False),
 
             "Processo": st.column_config.SelectboxColumn("Processo", options=proc_labels, required=False),
@@ -510,12 +535,16 @@ def render_conciliacao():
         old_conc = already_conc
 
 
+        new_obs = edited.loc[i, "Observação"]
+        old_obs = (old_row.get("observacao") or "")
+
         if (
             new_cat_id != old_cat
             or new_proc_id != old_proc
-            or (want_conc != old_conc)  # mudança de status
+            or new_obs != old_obs
+            or (want_conc != old_conc)
         ):
-            changes.append((mid, new_cat_id,  new_proc_id, want_conc))
+            changes.append((mid, new_cat_id, new_proc_id, want_conc, new_obs))
 
     if not changes:
         st.info("Nenhuma alteração detectada.")
@@ -530,7 +559,8 @@ def render_conciliacao():
                 pass
     
             with conn.cursor() as cur:
-                for mid, new_cat_id, new_proc_id, want_conc in changes:
+                for mid, new_cat_id, new_proc_id, want_conc, new_obs in changes:
+
                     cur.execute(
                         """
                         UPDATE movimento_bancario
@@ -563,7 +593,7 @@ def render_conciliacao():
                                 1.0,
                                 %s,                 -- usuario_confirmacao_id
                                 NOW(),
-                                NULL
+                                %s
                             )
                             ON CONFLICT (movimento_bancario_id)
                             DO UPDATE SET
@@ -574,6 +604,8 @@ def render_conciliacao():
                                 probabilidade = 1.0,
                                 usuario_confirmacao_id = EXCLUDED.usuario_confirmacao_id,
                                 dt_confirmacao = NOW()
+                                observacao = EXCLUDED.observacao,
+
                             """,
                             (
                                 int(mid),
