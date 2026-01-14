@@ -221,47 +221,71 @@ def render_conciliacao():
         processo_pick = st.selectbox("Processo", proc_opt, key="conc_processo")
 
     st.markdown("### Categorias financeiras")
+    # --- Flash message (feedback fora do expander) ---
+    flash = st.session_state.pop("catfin_flash", None)
+    if flash:
+        t = flash.get("type")
+        msg = flash.get("msg", "")
+        if t == "success":
+            st.success(msg)
+        elif t == "warning":
+            st.warning(msg)
+        else:
+            st.error(msg)
+
     with st.expander("Adicionar / editar / excluir categorias", expanded=False):
         col1, col2 = st.columns([1, 2])
 
         with col1:
             st.markdown("#### Nova categoria")
+            # --- antes dos widgets catfin_* ---
+            if st.session_state.get("catfin_clear", False):
+                st.session_state["catfin_nome"] = ""
+                st.session_state["catfin_ativo"] = True
+                st.session_state["catfin_clear"] = False
+
             cat_nome = st.text_input("nome*", key="catfin_nome")
             cat_ativo = st.checkbox("ativo", value=True, key="catfin_ativo")
 
             if st.button("Cadastrar categoria", type="primary", key="catfin_btn"):
                 if not cat_nome.strip():
-                    st.error("nome é obrigatório.")
-                else:
-                    try:
-                        row = None
-                        with fresh_conn() as conn:
-                            with conn.cursor() as cur:
-                                cur.execute(
-                                    """
-                                    INSERT INTO categoria_financeira (nome, ativo)
-                                    VALUES (%s, %s)
-                                    ON CONFLICT (nome) DO NOTHING
-                                    RETURNING id
-                                    """,
-                                    (_norm_upper(cat_nome), bool(cat_ativo)),
-                                )
-                                row = cur.fetchone()
-                            conn.commit()
-
-                        if row:
-                            st.success("Categoria cadastrada!")
-                        else:
-                            st.warning("Categoria já existe.")
-
-                    except Exception as e:
-                        st.error("Erro ao salvar categoria.")
-                        st.exception(e)
-
-                    st.cache_data.clear()
-                    st.session_state["catfin_nome"] = ""
-                    st.session_state["catfin_ativo"] = True
+                    st.session_state["catfin_flash"] = {"type": "error", "msg": "nome é obrigatório."}
                     st.rerun()
+
+                nome_norm = _norm_upper(cat_nome)
+
+                try:
+                    inserted = False
+                    with fresh_conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """
+                                INSERT INTO categoria_financeira (nome, ativo)
+                                VALUES (%s, %s)
+                                ON CONFLICT (nome) DO NOTHING
+                                RETURNING id
+                                """,
+                                (nome_norm, bool(cat_ativo)),
+                            )
+                            row = cur.fetchone()
+                        conn.commit()
+
+                    inserted = bool(row)
+
+                    if inserted:
+                        st.session_state["catfin_flash"] = {"type": "success", "msg": "Categoria cadastrada!"}
+                    else:
+                        st.session_state["catfin_flash"] = {"type": "warning", "msg": "Categoria já existe."}
+
+                    # Atualiza lista suspensa e limpa campos (Plano A)
+                    st.cache_data.clear()
+                    st.session_state["catfin_clear"] = True
+                    st.rerun()
+
+                except Exception:
+                    st.session_state["catfin_flash"] = {"type": "error", "msg": "Erro ao salvar categoria."}
+                    st.rerun()
+
 
 
         with col2:
@@ -572,49 +596,49 @@ def render_conciliacao():
 
                     if want_conc:
                         cur.execute(
-                            """
-                            INSERT INTO conciliacao (
-                                movimento_bancario_id,
-                                processo_id,
-                                cliente_id,
-                                status_id,
-                                regra_aplicada,
-                                probabilidade,
-                                usuario_confirmacao_id,
-                                dt_confirmacao,
-                                observacao
-                            )
-                            VALUES (
-                                %s,                 -- movimento_bancario_id
-                                %s,                 -- processo_id
-                                (SELECT cliente_id FROM processo WHERE id = %s),  -- cliente_id derivado do processo
-                                %s,                 -- status_id
-                                'MANUAL',
-                                1.0,
-                                %s,                 -- usuario_confirmacao_id
-                                NOW(),
-                                %s
-                            )
-                            ON CONFLICT (movimento_bancario_id)
-                            DO UPDATE SET
-                                processo_id = EXCLUDED.processo_id,
-                                cliente_id = EXCLUDED.cliente_id,
-                                status_id = EXCLUDED.status_id,
-                                regra_aplicada = 'MANUAL',
-                                probabilidade = 1.0,
-                                usuario_confirmacao_id = EXCLUDED.usuario_confirmacao_id,
-                                dt_confirmacao = NOW()
-                                observacao = EXCLUDED.observacao,
-
-                            """,
-                            (
-                                int(mid),
-                                new_proc_id,
-                                new_proc_id,          # usado no subquery do cliente_id
-                                int(st_confirmada),
-                                usuario_id,
-                            ),
+                        """
+                        INSERT INTO conciliacao (
+                            movimento_bancario_id,
+                            processo_id,
+                            cliente_id,
+                            status_id,
+                            regra_aplicada,
+                            probabilidade,
+                            usuario_confirmacao_id,
+                            dt_confirmacao,
+                            observacao
                         )
+                        VALUES (
+                            %s,                 -- movimento_bancario_id
+                            %s,                 -- processo_id
+                            (SELECT cliente_id FROM processo WHERE id = %s),  -- cliente_id derivado do processo
+                            %s,                 -- status_id
+                            'MANUAL',
+                            1.0,
+                            %s,                 -- usuario_confirmacao_id
+                            NOW(),
+                            %s                  -- observacao
+                        )
+                        ON CONFLICT (movimento_bancario_id)
+                        DO UPDATE SET
+                            processo_id = EXCLUDED.processo_id,
+                            cliente_id = EXCLUDED.cliente_id,
+                            status_id = EXCLUDED.status_id,
+                            regra_aplicada = 'MANUAL',
+                            probabilidade = 1.0,
+                            usuario_confirmacao_id = EXCLUDED.usuario_confirmacao_id,
+                            dt_confirmacao = NOW(),
+                            observacao = EXCLUDED.observacao
+                        """,
+                        (
+                            int(mid),
+                            new_proc_id,
+                            new_proc_id,
+                            int(st_confirmada),
+                            usuario_id,
+                            (new_obs or None),
+                        ),
+                    )
 
                     else:
                         cur.execute(
