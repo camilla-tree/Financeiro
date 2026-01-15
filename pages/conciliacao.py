@@ -12,6 +12,12 @@ import pandas as pd
 
 from db import fetch_df_cached, fresh_conn
 
+from services.conciliacao_service import (
+    ConciliacaoMaps,
+    calcular_changes,
+    aplicar_changes_no_banco,
+)
+
 
 @st.cache_data(ttl=60)
 def get_status_id(nome: str) -> int:
@@ -244,8 +250,16 @@ def render_conciliacao():
                 st.session_state["catfin_ativo"] = True
                 st.session_state["catfin_clear"] = False
 
+
+            if "catfin_nome" not in st.session_state:
+                st.session_state["catfin_nome"] = ""
+
+            if "catfin_ativo" not in st.session_state:
+                st.session_state["catfin_ativo"] = True
+
+
             cat_nome = st.text_input("nome*", key="catfin_nome")
-            cat_ativo = st.checkbox("ativo", value=True, key="catfin_ativo")
+            cat_ativo = st.checkbox("ativo", key="catfin_ativo")
 
             if st.button("Cadastrar categoria", type="primary", key="catfin_btn"):
                 if not cat_nome.strip():
@@ -464,6 +478,12 @@ def render_conciliacao():
     def _proc_label(x):
         xi = _safe_int(x)
         return proc_label_by_id.get(xi, "(Sem processo)")
+    
+    maps = ConciliacaoMaps(
+        cat_id_by_label=cat_id_by_label,
+        proc_id_by_label=proc_id_by_label,
+    )
+
 
     # =========================
     # Tabela com edição inline + flags
@@ -526,136 +546,17 @@ def render_conciliacao():
     if not salvar_tbl:
         return
 
-    # =========================
-    # Salvar (aplica regras + grava)
-    # =========================
-    # Mapa do estado atual no DB (para travas de regra)
-    current_is_conc = {int(r["movimento_id"]): bool(pd.notna(r["conciliacao_id"])) for _, r in df_mov.iterrows()}
-
-    changes = []
-    for i in range(len(edited)):
-        mid = int(edited.loc[i, "ID"])
-
-        new_cat_label = edited.loc[i, "Categoria"]
-        new_proc_label = edited.loc[i, "Processo"]
-
-        new_cat_id = cat_id_by_label.get(new_cat_label)
-        new_proc_id = proc_id_by_label.get(new_proc_label)
-
-        flag_c = bool(edited.loc[i, "Conciliado"])
-        want_conc = flag_c
-
-        already_conc = current_is_conc.get(mid, False)
-
-        # fase 1: se já conciliado no banco, não pode "voltar" pra não conciliado
-        if already_conc and (not want_conc):
-            want_conc = True
-
-
-        # detecta mudanças contra o df_mov
-        old_row = df_mov[df_mov["movimento_id"] == mid].iloc[0]
-        old_cat = _safe_int(old_row.get("categoria_id"))
-        old_proc = _safe_int(old_row.get("processo_id"))
-        old_conc = already_conc
-
-
-        new_obs = edited.loc[i, "Observação"]
-        old_obs = (old_row.get("observacao") or "")
-
-        if (
-            new_cat_id != old_cat
-            or new_proc_id != old_proc
-            or new_obs != old_obs
-            or (want_conc != old_conc)
-        ):
-            changes.append((mid, new_cat_id, new_proc_id, want_conc, new_obs))
+    changes = calcular_changes(df_mov=df_mov, edited=edited, maps=maps)
 
     if not changes:
         st.info("Nenhuma alteração detectada.")
         return
 
-    with fresh_conn() as conn:
-        try:
-            # evita estado "aborted transaction" se algo anterior falhou na mesma sessão
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-    
-            with conn.cursor() as cur:
-                for mid, new_cat_id, new_proc_id, want_conc, new_obs in changes:
-
-                    cur.execute(
-                        """
-                        UPDATE movimento_bancario
-                        SET categoria_id = %s
-                        WHERE id = %s
-                        """,
-                        (new_cat_id, int(mid)),
-                    )
-
-                    if want_conc:
-                        cur.execute(
-                        """
-                        INSERT INTO conciliacao (
-                            movimento_bancario_id,
-                            processo_id,
-                            cliente_id,
-                            status_id,
-                            regra_aplicada,
-                            probabilidade,
-                            usuario_confirmacao_id,
-                            dt_confirmacao,
-                            observacao
-                        )
-                        VALUES (
-                            %s,                 -- movimento_bancario_id
-                            %s,                 -- processo_id
-                            (SELECT cliente_id FROM processo WHERE id = %s),  -- cliente_id derivado do processo
-                            %s,                 -- status_id
-                            'MANUAL',
-                            1.0,
-                            %s,                 -- usuario_confirmacao_id
-                            NOW(),
-                            %s                  -- observacao
-                        )
-                        ON CONFLICT (movimento_bancario_id)
-                        DO UPDATE SET
-                            processo_id = EXCLUDED.processo_id,
-                            cliente_id = EXCLUDED.cliente_id,
-                            status_id = EXCLUDED.status_id,
-                            regra_aplicada = 'MANUAL',
-                            probabilidade = 1.0,
-                            usuario_confirmacao_id = EXCLUDED.usuario_confirmacao_id,
-                            dt_confirmacao = NOW(),
-                            observacao = EXCLUDED.observacao
-                        """,
-                        (
-                            int(mid),
-                            new_proc_id,
-                            new_proc_id,
-                            int(st_confirmada),
-                            usuario_id,
-                            (new_obs or None),
-                        ),
-                    )
-
-                    else:
-                        cur.execute(
-                            "DELETE FROM conciliacao WHERE movimento_bancario_id = %s",
-                            (int(mid),),
-                        )
- 
-            # ✅ commit explícito ANTES de qualquer coisa do Streamlit
-            conn.commit()
-
-        except Exception:
-            # ✅ rollback explícito se algo deu errado
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-            raise
+    aplicar_changes_no_banco(
+        changes,
+        usuario_id=usuario_id,
+        status_confirmada_id=int(st_confirmada),
+    )
 
     # ✅ Agora sim: UI fora da transação
     st.success(f"Salvo! {len(changes)} movimento(s) atualizado(s).")

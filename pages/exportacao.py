@@ -254,7 +254,7 @@ def _build_pdf_relatorio(df: pd.DataFrame, ctx: RelatorioContext) -> bytes:
 
     cell_style = ParagraphStyle("cell", parent=styles["Normal"], fontSize=8, leading=9)
 
-    cols = ["BANCO", "DATA", "HISTÓRICO", "TIPO DE LANÇAMENTO", "CATEGORIA", "ENTRADA", "SAÍDA", "SALDO"]
+    cols = ["BANCO", "DATA", "HISTÓRICO", "TIPO", "CATEGORIA", "ENTRADA", "SAÍDA", "SALDO"]
     rows = [cols]
 
     for _, r in df.iterrows():
