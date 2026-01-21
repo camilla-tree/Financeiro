@@ -287,3 +287,75 @@ def replace_despesas(fechamento_id: int, despesas: List[Dict[str, Any]]) -> None
                     ),
                 )
         conn.commit()
+
+
+def get_lista_clientes() -> List[str]:
+    """Retorna lista de nomes da tabela cliente (singular)."""
+    # Seu SQL usa 'cliente' no singular
+    df = fetch_df_cached("SELECT nome FROM cliente WHERE ativo = true ORDER BY nome")
+    if df.empty:
+        return []
+    return df["nome"].tolist()
+
+def get_lista_empresas() -> List[str]:
+    """Retorna lista de nomes da tabela empresa (singular)."""
+    # Seu SQL usa 'empresa' no singular
+    df = fetch_df_cached("SELECT nome FROM empresa ORDER BY nome")
+    if df.empty:
+        return []
+    return df["nome"].tolist()
+
+def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtro) -> pd.DataFrame:
+    """
+    Usa a VIEW vw_movimento_bancario_conciliado para gerar o relatório.
+    Faz JOIN com a tabela 'conciliacao' para pegar a observação personalizada.
+    """
+    
+    # Adicionamos um LEFT JOIN com a tabela conciliacao (tbl_c) para pegar a observação real
+    # Usamos COALESCE: Se tiver observação na conciliação, usa ela. 
+    # Se estiver vazia (null), usa a descrição original do banco para não ficar em branco.
+    sql = """
+        SELECT 
+            v.banco_nome as "Banco", 
+            v.dt_movimento as "Data", 
+            
+            -- Coluna Movimentação (Histórico original do banco)
+            v.descricao as "Movimentação",
+            
+            -- Coluna Descrição (Vem da Observação da Conciliação)
+            -- Se não tiver observação, mostramos a descrição do banco como fallback (opcional)
+            COALESCE(tbl_c.observacao, v.descricao) as "Descrição",
+            
+            v.tipo_movimento as "Tipo", 
+            v.categoria_financeira as "Categoria", 
+            
+            CASE WHEN v.valor > 0 THEN v.valor ELSE 0 END as "Entrada",
+            CASE WHEN v.valor < 0 THEN ABS(v.valor) ELSE 0 END as "Saída",
+            
+            v.saldo as "Saldo",
+            
+            -- Campos ocultos para filtro
+            v.cliente_nome,
+            e.nome as empresa_nome
+            
+        FROM vw_movimento_bancario_conciliado v
+        JOIN conta_bancaria cb ON v.conta_bancaria_id = cb.id
+        JOIN empresa e ON cb.empresa_id = e.id
+        LEFT JOIN conciliacao tbl_c ON v.conciliacao_id = tbl_c.id
+        
+        WHERE v.dt_movimento BETWEEN %s AND %s
+    """
+    
+    params = [data_inicio, data_fim]
+
+    if tipo_filtro == "Cliente" and valor_filtro != "Todos":
+        sql += " AND v.cliente_nome = %s"
+        params.append(valor_filtro)
+        
+    elif tipo_filtro == "Empresa" and valor_filtro != "Todas":
+        sql += " AND e.nome = %s"
+        params.append(valor_filtro)
+    
+    sql += " ORDER BY v.dt_movimento ASC, v.movimento_id ASC"
+
+    return fetch_df(sql, tuple(params))

@@ -1,460 +1,187 @@
-from __future__ import annotations
-
-import io
-import zipfile
-from dataclasses import dataclass
-from datetime import date, datetime
-from typing import Optional, Tuple, List
-
-import pandas as pd
 import streamlit as st
+import pandas as pd
+from datetime import date
+from db import get_lista_clientes, get_lista_empresas, get_dados_relatorio_filtrado
 
-from db import fetch_df_cached
-
-# PDF (reportlab)
+# Bibliotecas para PDF
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
-
-
-@dataclass
-class RelatorioContext:
-    cliente_nome: str
-    empresa_nome: str
-    mes_label: str
-    saldo_anterior: float
-    total_entrada: float
-    total_saida: float
-
-
-MESES = [
-    ("JANEIRO", 1),
-    ("FEVEREIRO", 2),
-    ("MARÇO", 3),
-    ("ABRIL", 4),
-    ("MAIO", 5),
-    ("JUNHO", 6),
-    ("JULHO", 7),
-    ("AGOSTO", 8),
-    ("SETEMBRO", 9),
-    ("OUTUBRO", 10),
-    ("NOVEMBRO", 11),
-    ("DEZEMBRO", 12),
-]
-
-
-def _dt_ini_fim(ano: int, mes_num: int):
-    dt_ini = date(ano, mes_num, 1)
-    if mes_num == 12:
-        dt_fim = date(ano + 1, 1, 1)
-    else:
-        dt_fim = date(ano, mes_num + 1, 1)
-    return dt_ini, dt_fim
-
-
-def _month_start(d: date) -> date:
-    return date(d.year, d.month, 1)
-
-
-def _add_month(d: date) -> date:
-    if d.month == 12:
-        return date(d.year + 1, 1, 1)
-    return date(d.year, d.month + 1, 1)
-
-
-def _mes_label(dt_ini: date) -> str:
-    return f"{dt_ini.month:02d}-{dt_ini.year}"
-
-
-def _fmt_brl(v) -> str:
-    try:
-        vv = float(v)
-    except Exception:
-        return ""
-    s = f"{vv:,.2f}"
-    s = s.replace(",", "X").replace(".", ",").replace("X", ".")
-    return f"R$ {s}"
-
-
-def _fmt_date(d) -> str:
-    if d is None:
-        return ""
-    if isinstance(d, (datetime,)):
-        d = d.date()
-    if isinstance(d, (date,)):
-        return d.strftime("%d/%m/%Y")
-    # fallback
-    return str(d)
-
-
-def _get_status_confirmada_id() -> int:
-    df = fetch_df_cached("SELECT id FROM conciliacao_status WHERE nome='CONFIRMADA' LIMIT 1")
-    if df.empty:
-        return 0
-    return int(df.iloc[0]["id"])
-
-
-def _fetch_clientes() -> pd.DataFrame:
-    return fetch_df_cached("SELECT id, nome FROM cliente WHERE ativo=true ORDER BY nome")
-
-
-def _fetch_empresas() -> pd.DataFrame:
-    return fetch_df_cached("SELECT id, nome FROM empresa ORDER BY nome")
-
-
-def _fetch_saldo_anterior(
-    cliente_id: int,
-    dt_ini: date,
-    status_confirmada_id: int,
-    empresa_id: Optional[int] = None,
-) -> float:
-    params = [status_confirmada_id, cliente_id, dt_ini]
-    filtro_empresa = ""
-    if empresa_id is not None:
-        filtro_empresa = " AND e.id = %s "
-        params.append(empresa_id)
-
-    sql = f"""
-    SELECT
-      COALESCE(SUM(
-        CASE
-          WHEN mt.nome='ENTRADA' THEN mb.valor
-          WHEN mt.nome='SAIDA' THEN -mb.valor
-          ELSE 0
-        END
-      ), 0) AS saldo_anterior
-    FROM conciliacao co
-    JOIN conciliacao_status cs ON cs.id = co.status_id
-    JOIN cliente cl ON cl.id = co.cliente_id
-
-    JOIN movimento_bancario mb ON mb.id = co.movimento_bancario_id
-    JOIN conta_bancaria cb ON cb.id = mb.conta_bancaria_id
-    JOIN empresa e ON e.id = cb.empresa_id
-    LEFT JOIN movimento_tipo mt ON mt.id = mb.tipo_id
-
-    WHERE cs.id = %s
-      AND cl.id = %s
-      AND mb.dt_movimento < %s
-      {filtro_empresa}
-    """
-    df = fetch_df_cached(sql, tuple(params))
-    try:
-        return float(df.iloc[0]["saldo_anterior"]) if not df.empty else 0.0
-    except Exception:
-        return 0.0
-
-
-def _fetch_movimentos_conciliados(
-    cliente_id: int,
-    dt_ini: date,
-    dt_fim: date,
-    status_confirmada_id: int,
-    empresa_id: Optional[int] = None,
-) -> pd.DataFrame:
-    params = [status_confirmada_id, cliente_id, dt_ini, dt_fim]
-    filtro_empresa = ""
-    if empresa_id is not None:
-        filtro_empresa = " AND e.id = %s "
-        params.append(empresa_id)
-
-    sql = f"""
-    SELECT
-      e.id AS empresa_id,
-      e.nome AS empresa_nome,
-      cl.nome AS cliente_nome,
-
-      b.codigo AS banco_codigo,
-      mb.dt_movimento,
-      mb.descricao,
-      mb.valor,
-      mb.saldo,
-
-      mt.nome AS tipo,                 -- ENTRADA / SAIDA (do banco)
-      cf.nome AS categoria_nome
-
-    FROM conciliacao co
-    JOIN conciliacao_status cs ON cs.id = co.status_id
-    JOIN cliente cl ON cl.id = co.cliente_id
-
-    JOIN movimento_bancario mb ON mb.id = co.movimento_bancario_id
-    JOIN conta_bancaria cb ON cb.id = mb.conta_bancaria_id
-    JOIN empresa e ON e.id = cb.empresa_id
-    JOIN banco b ON b.id = mb.banco_id
-    LEFT JOIN movimento_tipo mt ON mt.id = mb.tipo_id
-    LEFT JOIN categoria_financeira cf ON cf.id = mb.categoria_id
-
-    WHERE cs.id = %s
-      AND cl.id = %s
-      AND mb.dt_movimento >= %s
-      AND mb.dt_movimento < %s
-      {filtro_empresa}
-
-    ORDER BY e.nome, mb.dt_movimento, mb.id
-    """
-    return fetch_df_cached(sql, tuple(params))
-
-
-def _totais_entrada_saida(df: pd.DataFrame) -> Tuple[float, float]:
-    if df.empty:
-        return 0.0, 0.0
-    df2 = df.copy()
-    df2["tipo"] = df2["tipo"].astype(str).str.upper().str.strip()
-    entrada = float(df2.loc[df2["tipo"] == "ENTRADA", "valor"].sum())
-    saida = float(df2.loc[df2["tipo"] == "SAIDA", "valor"].sum())
-    return entrada, saida
-
-
-def _build_pdf_relatorio(df: pd.DataFrame, ctx: RelatorioContext) -> bytes:
-    buffer = io.BytesIO()
-
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=landscape(A4),
-        leftMargin=36,
-        rightMargin=36,
-        topMargin=28,
-        bottomMargin=28,
-    )
-    styles = getSampleStyleSheet()
-    story = []
-
-    from reportlab.lib.enums import TA_LEFT, TA_CENTER
-    from reportlab.lib.styles import ParagraphStyle
-
-    title_style = ParagraphStyle("t", parent=styles["Title"], alignment=TA_CENTER)
-    info_style = ParagraphStyle("i", parent=styles["Normal"], alignment=TA_LEFT, fontSize=10, leading=12)
-
-    story.append(Paragraph(f"<b>CLIENTE: {ctx.cliente_nome}</b>", title_style))
-    story.append(Spacer(1, 10))
-    story.append(Paragraph(f"<b>EMPRESA:</b> {ctx.empresa_nome}", info_style))
-    story.append(Paragraph(f"<b>MÊS:</b> {ctx.mes_label}", info_style))
-    story.append(Spacer(1, 8))
-
-
-    resumo = [
-        ["Saldo anterior", _fmt_brl(ctx.saldo_anterior)],
-        ["Total de entrada", _fmt_brl(ctx.total_entrada)],
-        ["Total de saída", _fmt_brl(ctx.total_saida)],
-    ]
-    resumo_tbl = Table(resumo, colWidths=[140, 160])
-    resumo_tbl.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, -1), colors.whitesmoke),
-                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ("ALIGN", (1, 0), (1, -1), "LEFT"),
-                ("FONTSIZE", (0, 0), (-1, -1), 10),
-            ]
-        )
-    )
-    story.append(resumo_tbl)
-    story.append(Spacer(1, 14))
-
-    cell_style = ParagraphStyle("cell", parent=styles["Normal"], fontSize=8, leading=9)
-
-    cols = ["BANCO", "DATA", "HISTÓRICO", "TIPO", "CATEGORIA", "ENTRADA", "SAÍDA", "SALDO"]
-    rows = [cols]
-
-    for _, r in df.iterrows():
-        tipo = str(r.get("tipo") or "").upper().strip()
-        valor = float(r.get("valor") or 0.0)
-        saldo = r.get("saldo")
-
-        entrada = valor if tipo == "ENTRADA" else 0.0
-        saida = valor if tipo == "SAIDA" else 0.0
-        tipo_lanc = "RECEITA" if tipo == "ENTRADA" else "DESPESA"
-
-        rows.append(
-            [
-                Paragraph(str(r.get("banco_codigo") or ""), cell_style),         # BANCO
-                Paragraph(_fmt_date(r.get("dt_movimento")), cell_style),          # DATA
-                Paragraph(str(r.get("descricao") or ""), cell_style),             # HISTÓRICO (quebra linha)
-                Paragraph(tipo_lanc, cell_style),                                 # TIPO
-                Paragraph(str(r.get("categoria_nome") or ""), cell_style),        # CATEGORIA (quebra linha)
-                Paragraph(_fmt_brl(entrada) if entrada else "", cell_style),      # ENTRADA
-                Paragraph(_fmt_brl(saida) if saida else "", cell_style),          # SAÍDA
-                Paragraph(_fmt_brl(saldo) if saldo is not None else "", cell_style),  # SALDO
-            ]
-        )
-
-    # ✅ colWidths que CABEM na landscape(A4) com margem 36/36 (largura útil ~770)
-    table = Table(
-        rows,
-        repeatRows=1,
-        colWidths=[55, 60, 260, 90, 120, 60, 60, 65],  # <- soma = 770
-    )
-
-    table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#d9ead3")),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, 0), 9),
-                ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("FONTSIZE", (0, 1), (-1, -1), 8),
-
-                ("ALIGN", (1, 1), (1, -1), "CENTER"),   # DATA
-                ("ALIGN", (5, 1), (7, -1), "RIGHT"),    # ENTRADA/SAÍDA/SALDO
-            ]
-        )
-    )
-
-    story.append(table)
-
-    doc.build(story)
-
-    return buffer.getvalue()
-
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Image, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import mm
+from io import BytesIO
 
 def render_exportacao():
-    st.subheader("Relatórios de Cliente")
+    # CSS Específico para deixar bonito igual ao Dashboard
+    st.markdown("""
+        <style>
+            .stSelectbox div[data-baseweb="select"] > div {
+                background-color: #E0E2E6 !important;
+                border-radius: 8px !important;
+                color: #31333F;
+            }
+            .stDateInput input {
+                background-color: #E0E2E6 !important;
+                border-radius: 8px !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
-    status_confirmada_id = _get_status_confirmada_id()
-    if status_confirmada_id == 0:
-        st.error("Não encontrei o status 'CONFIRMADA' em conciliacao_status.")
-        return
+    st.title("📊 Relatórios Financeiros")
 
-    df_cli = _fetch_clientes()
-    if df_cli.empty:
-        st.warning("Cadastre clientes primeiro.")
-        return
+    with st.container():
+        st.write("### Selecione os filtros")
+        
+        col_dates, col_type, col_select = st.columns([2, 1, 2])
+        
+        with col_dates:
+            c1, c2 = st.columns(2)
+            dt_inicio = c1.date_input("Início", value=date.today().replace(day=1))
+            dt_fim = c2.date_input("Fim", value=date.today())
 
-    df_emp = _fetch_empresas()
+        with col_type:
+            tipo_filtro = st.radio("Filtrar por:", ["Cliente", "Empresa"])
 
-    # filtros
-    colA, colB, colC = st.columns([1.2, 1.4, 1.4])
+        with col_select:
+            if tipo_filtro == "Cliente":
+                # Busca do banco correto agora (tabela cliente)
+                opcoes = ["Todos"] + get_lista_clientes()
+                selecionado = st.selectbox("Selecione o Cliente", opcoes)
+            else:
+                # Busca do banco correto agora (tabela empresa)
+                opcoes = ["Todas"] + get_lista_empresas()
+                selecionado = st.selectbox("Selecione a Empresa", opcoes)
 
-    with colA:
-        mes_nome = st.selectbox("Mês", [m[0] for m in MESES], index=date.today().month - 1)
-        mes_num = dict(MESES)[mes_nome]
+    st.markdown("---")
 
-    with colB:
-        ano_atual = date.today().year
-        anos = list(range(2023, ano_atual + 1))
-        ano = st.selectbox("Ano", anos, index=len(anos) - 1)
+    # Botão de busca
+    if st.button("Buscar Dados", use_container_width=True):
+        # Chama a nova função otimizada do DB
+        df_resultado = get_dados_relatorio_filtrado(dt_inicio, dt_fim, tipo_filtro, selecionado)
+        st.session_state['relatorio_cache'] = df_resultado
+        st.session_state['filtro_atual'] = f"{tipo_filtro}: {selecionado}"
 
-    dt_ini, dt_fim = _dt_ini_fim(int(ano), int(mes_num))
+    # Recupera dados do cache
+    df = st.session_state.get('relatorio_cache', pd.DataFrame())
 
-    with colC:
-        cli_nome = st.selectbox("Cliente", df_cli["nome"].tolist())
-        cliente_id = int(df_cli.loc[df_cli["nome"] == cli_nome, "id"].iloc[0])
+    if not df.empty:
+        # Define quais colunas mostrar na tabela (Removemos as colunas auxiliares de filtro)
+        cols_view = ["Banco", "Data", "Movimentação", "Descrição", "Tipo", "Categoria", "Entrada", "Saída", "Saldo"]
+        
+        # Garante que todas as colunas existem (caso a query retorne vazio em alguma)
+        for col in cols_view:
+            if col not in df.columns:
+                df[col] = ""
 
-    empresa_id: Optional[int] = None
-    empresa_nome = "(todas as empresas)"
-    if not df_emp.empty:
-        opt_emp = ["(Todas)"] + df_emp["nome"].tolist()
-        emp = st.selectbox("Empresa (opcional)", opt_emp, index=0)
-        if emp != "(Todas)":
-            empresa_id = int(df_emp.loc[df_emp["nome"] == emp, "id"].iloc[0])
-            empresa_nome = emp
+        df_exibir = df[cols_view]
 
-    st.caption("Gera relatório apenas de movimentações com conciliação CONFIRMADA.")
-
-    gerar = st.button("Gerar relatório", type="primary")
-    if not gerar:
-        return
-
-    # busca dados
-    df = _fetch_movimentos_conciliados(
-        cliente_id=cliente_id,
-        dt_ini=dt_ini,
-        dt_fim=dt_fim,
-        status_confirmada_id=status_confirmada_id,
-        empresa_id=empresa_id,
-    )
-
-    if df.empty:
-        st.warning("Nenhuma movimentação conciliada (CONFIRMADA) encontrada no período/filtros.")
-        return
-
-    saldo_anterior = _fetch_saldo_anterior(
-        cliente_id=cliente_id,
-        dt_ini=dt_ini,
-        status_confirmada_id=status_confirmada_id,
-        empresa_id=empresa_id,
-    )
-    total_entrada, total_saida = _totais_entrada_saida(df)
-
-    # Caso 1: empresa selecionada => 1 PDF
-    if empresa_id is not None:
-        ctx = RelatorioContext(
-            cliente_nome=cli_nome,
-            empresa_nome=empresa_nome,
-            mes_label=_mes_label(dt_ini),
-            saldo_anterior=saldo_anterior,
-            total_entrada=total_entrada,
-            total_saida=total_saida,
-        )
-
-        pdf_bytes = _build_pdf_relatorio(df, ctx)
-
-        st.success("Relatório gerado.")
-
-        df_view = df.copy()
-        df_view = df_view.rename(
-            columns={
-                "empresa_nome": "Empresa",
-                "cliente_nome": "Cliente",
-                "banco_codigo": "Banco",
-                "dt_movimento": "Data",
-                "descricao": "Histórico",
-                "tipo": "Tipo",
-                "categoria_nome": "Categoria",
-                "valor": "Valor",
-                "saldo": "Saldo",
+        st.subheader(f"Pré-visualização ({len(df)} registros)")
+        
+        st.dataframe(
+            df_exibir, 
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Entrada": st.column_config.NumberColumn(format="R$ %.2f"),
+                "Saída": st.column_config.NumberColumn(format="R$ %.2f"),
+                "Saldo": st.column_config.NumberColumn(format="R$ %.2f"),
+                "Data": st.column_config.DateColumn(format="DD/MM/YYYY"),
             }
         )
-        cols_order = [c for c in ["Empresa", "Cliente", "Banco", "Data", "Histórico", "Tipo", "Categoria", "Valor", "Saldo"] if c in df_view.columns]
-        df_view = df_view[cols_order]
-        st.dataframe(df_view, use_container_width=True)
 
-        nome_arquivo = (
-            f"relatorio_{cli_nome}_{ctx.empresa_nome}_{_mes_label(dt_ini)}.pdf"
-            .replace("/", "-")
-            .replace(" ", "_")
-        )
-        st.download_button(
-            "Baixar PDF",
-            data=pdf_bytes,
-            file_name=nome_arquivo,
-            mime="application/pdf",
-        )
-        return
+        st.markdown("### Exportação")
+        c1, c2 = st.columns(2)
 
-    # Caso 2: empresa NÃO selecionada => 1 PDF por empresa => ZIP
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as z:
-        for emp_nome, df_emp_mov in df.groupby("empresa_nome"):
-            saldo_ant_emp = _fetch_saldo_anterior(
-                cliente_id=cliente_id,
-                dt_ini=dt_ini,
-                status_confirmada_id=status_confirmada_id,
-                empresa_id=int(df_emp.loc[df_emp["nome"] == emp_nome, "id"].iloc[0]),
-            )
-            ent, sai = _totais_entrada_saida(df_emp_mov)
+        # Botão Relatório Geral
+        with c1:
+            if st.button(f"📄 Baixar Relatório ({st.session_state['filtro_atual']})", use_container_width=True):
+                pdf_bytes = gerar_pdf_treecomex(df_exibir, titulo=f"Relatório - {st.session_state['filtro_atual']}")
+                st.download_button(
+                    label="⬇️ Download PDF",
+                    data=pdf_bytes,
+                    file_name="Relatorio_Geral.pdf",
+                    mime="application/pdf"
+                )
 
-            ctx = RelatorioContext(
-                cliente_nome=cli_nome,
-                empresa_nome=str(emp_nome),
-                mes_label=_mes_label(dt_ini),
-                saldo_anterior=saldo_ant_emp,
-                total_entrada=ent,
-                total_saida=sai,
-            )
-            pdf_bytes = _build_pdf_relatorio(df_emp_mov, ctx)
-            fn = f"relatorio_{cli_nome}_{emp_nome}_{_mes_label(dt_ini)}.pdf".replace("/", "-").replace(" ", "_")
-            z.writestr(fn, pdf_bytes)
+        # Botão Relatório Licitação
+        with c2:
+            if st.button("⚖️ Baixar Relatório de Licitação", use_container_width=True):
+                # Filtra onde a Categoria contem "Licitação" (case insensitive)
+                df_licitacao = df_exibir[df_exibir['Categoria'].astype(str).str.contains('Licitação', case=False, na=False)]
+                
+                if not df_licitacao.empty:
+                    pdf_bytes = gerar_pdf_treecomex(df_licitacao, titulo=f"Relatório Licitação - {st.session_state['filtro_atual']}")
+                    st.download_button(
+                        label="⬇️ Download PDF Licitação",
+                        data=pdf_bytes,
+                        file_name="Relatorio_Licitacao.pdf",
+                        mime="application/pdf"
+                    )
+                else:
+                    st.warning("Nenhum registro de Licitação encontrado nestes dados.")
 
-    st.success("Relatórios gerados (um por empresa).")
-    zip_buffer.seek(0)
-    nome_zip = f"relatorios_{cli_nome}_{_mes_label(dt_ini)}.zip".replace("/", "-").replace(" ", "_")
-    st.download_button(
-        "Baixar ZIP",
-        data=zip_buffer.getvalue(),
-        file_name=nome_zip,
-        mime="application/zip",
-    )
+    elif 'relatorio_cache' in st.session_state:
+        st.info("Nenhum dado encontrado para os filtros selecionados.")
+
+
+# --- FUNÇÃO DO PDF (Mantida e Ajustada) ---
+def gerar_pdf_treecomex(df, titulo="Relatório"):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=10*mm, leftMargin=10*mm, topMargin=15*mm, bottomMargin=15*mm)
+    
+    elementos = []
+    styles = getSampleStyleSheet()
+
+    # Logo e Título
+    try:
+        logo = Image("assets/logo.png", width=40*mm, height=15*mm)
+        logo.hAlign = 'RIGHT'
+    except:
+        logo = Paragraph("Treecomex", styles['Normal'])
+
+    titulo_text = Paragraph(titulo, styles['Title'])
+    
+    data_header = [[titulo_text, logo]]
+    t_header = Table(data_header, colWidths=[200*mm, 70*mm])
+    t_header.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'LEFT'), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
+    elementos.append(t_header)
+    elementos.append(Spacer(1, 10*mm))
+
+    # Dados da Tabela
+    # Converter colunas numéricas para string formatada R$
+    data_export = df.copy()
+    for col in ["Entrada", "Saída", "Saldo"]:
+        data_export[col] = data_export[col].apply(lambda x: f"{float(x):.2f}" if pd.notnull(x) and x != '' else "0.00")
+    
+    # Prepara lista para o ReportLab
+    lista_dados = [data_export.columns.to_list()]
+    
+    for index, row in data_export.iterrows():
+        linha = []
+        for item in row:
+            # Envolve texto longo em Paragraph para quebrar linha
+            if isinstance(item, str) and len(item) > 25:
+                 linha.append(Paragraph(item, styles['Normal']))
+            else:
+                 linha.append(str(item))
+        lista_dados.append(linha)
+
+    # Larguras manuais ajustadas
+    col_widths = [30*mm, 25*mm, 40*mm, 50*mm, 20*mm, 30*mm, 25*mm, 25*mm, 25*mm]
+    
+    t = Table(lista_dados, colWidths=col_widths, repeatRows=1)
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#58A6D8")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.whitesmoke]),
+    ]))
+    
+    elementos.append(t)
+    doc.build(elementos)
+    buffer.seek(0)
+    return buffer.getvalue()
