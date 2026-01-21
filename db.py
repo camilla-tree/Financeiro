@@ -308,35 +308,35 @@ def get_lista_empresas() -> List[str]:
 def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtro) -> pd.DataFrame:
     """
     Usa a VIEW vw_movimento_bancario_conciliado para gerar o relatório.
-    Faz JOIN com a tabela 'conciliacao' para pegar a observação personalizada.
+    - Faz JOIN com conciliacao para pegar Observação personalizada.
+    - Faz JOIN com empresa para mostrar de quem é a conta bancária.
     """
     
-    # Adicionamos um LEFT JOIN com a tabela conciliacao (tbl_c) para pegar a observação real
-    # Usamos COALESCE: Se tiver observação na conciliação, usa ela. 
-    # Se estiver vazia (null), usa a descrição original do banco para não ficar em branco.
     sql = """
         SELECT 
+            -- Nova Coluna solicitada:
+            e.nome as "Empresa",
+            
             v.banco_nome as "Banco", 
             v.dt_movimento as "Data", 
             
-            -- Coluna Movimentação (Histórico original do banco)
+            -- Histórico Original
             v.descricao as "Movimentação",
             
-            -- Coluna Descrição (Vem da Observação da Conciliação)
-            -- Se não tiver observação, mostramos a descrição do banco como fallback (opcional)
+            -- Descrição Personalizada (Observação da Conciliação)
             COALESCE(tbl_c.observacao, v.descricao) as "Descrição",
             
             v.tipo_movimento as "Tipo", 
             v.categoria_financeira as "Categoria", 
             
+            -- Valores separados
             CASE WHEN v.valor > 0 THEN v.valor ELSE 0 END as "Entrada",
             CASE WHEN v.valor < 0 THEN ABS(v.valor) ELSE 0 END as "Saída",
             
             v.saldo as "Saldo",
             
-            -- Campos ocultos para filtro
-            v.cliente_nome,
-            e.nome as empresa_nome
+            -- Campos para filtro (ocultos na lógica, mas usados no WHERE)
+            v.cliente_nome
             
         FROM vw_movimento_bancario_conciliado v
         JOIN conta_bancaria cb ON v.conta_bancaria_id = cb.id
@@ -348,6 +348,7 @@ def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtr
     
     params = [data_inicio, data_fim]
 
+    # Filtros
     if tipo_filtro == "Cliente" and valor_filtro != "Todos":
         sql += " AND v.cliente_nome = %s"
         params.append(valor_filtro)
@@ -356,6 +357,6 @@ def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtr
         sql += " AND e.nome = %s"
         params.append(valor_filtro)
     
-    sql += " ORDER BY v.dt_movimento ASC, v.movimento_id ASC"
+    sql += " ORDER BY e.nome ASC, v.dt_movimento ASC, v.movimento_id ASC"
 
     return fetch_df(sql, tuple(params))

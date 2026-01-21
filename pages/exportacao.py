@@ -12,7 +12,7 @@ from reportlab.lib.units import mm
 from io import BytesIO
 
 def render_exportacao():
-    # CSS Específico para deixar bonito igual ao Dashboard
+    # CSS para Inputs Arredondados (Estilo Dashboard)
     st.markdown("""
         <style>
             .stSelectbox div[data-baseweb="select"] > div {
@@ -44,31 +44,28 @@ def render_exportacao():
 
         with col_select:
             if tipo_filtro == "Cliente":
-                # Busca do banco correto agora (tabela cliente)
                 opcoes = ["Todos"] + get_lista_clientes()
                 selecionado = st.selectbox("Selecione o Cliente", opcoes)
             else:
-                # Busca do banco correto agora (tabela empresa)
                 opcoes = ["Todas"] + get_lista_empresas()
                 selecionado = st.selectbox("Selecione a Empresa", opcoes)
 
     st.markdown("---")
 
-    # Botão de busca
     if st.button("Buscar Dados", use_container_width=True):
-        # Chama a nova função otimizada do DB
         df_resultado = get_dados_relatorio_filtrado(dt_inicio, dt_fim, tipo_filtro, selecionado)
         st.session_state['relatorio_cache'] = df_resultado
         st.session_state['filtro_atual'] = f"{tipo_filtro}: {selecionado}"
 
-    # Recupera dados do cache
+    # Recupera do Cache
     df = st.session_state.get('relatorio_cache', pd.DataFrame())
 
     if not df.empty:
-        # Define quais colunas mostrar na tabela (Removemos as colunas auxiliares de filtro)
-        cols_view = ["Banco", "Data", "Movimentação", "Descrição", "Tipo", "Categoria", "Entrada", "Saída", "Saldo"]
+        # --- DEFINIÇÃO DAS COLUNAS PARA EXIBIÇÃO ---
+        # Adicionamos "Empresa" no início
+        cols_view = ["Empresa", "Banco", "Data", "Movimentação", "Descrição", "Tipo", "Categoria", "Entrada", "Saída", "Saldo"]
         
-        # Garante que todas as colunas existem (caso a query retorne vazio em alguma)
+        # Garante integridade das colunas
         for col in cols_view:
             if col not in df.columns:
                 df[col] = ""
@@ -92,7 +89,6 @@ def render_exportacao():
         st.markdown("### Exportação")
         c1, c2 = st.columns(2)
 
-        # Botão Relatório Geral
         with c1:
             if st.button(f"📄 Baixar Relatório ({st.session_state['filtro_atual']})", use_container_width=True):
                 pdf_bytes = gerar_pdf_treecomex(df_exibir, titulo=f"Relatório - {st.session_state['filtro_atual']}")
@@ -103,10 +99,9 @@ def render_exportacao():
                     mime="application/pdf"
                 )
 
-        # Botão Relatório Licitação
         with c2:
             if st.button("⚖️ Baixar Relatório de Licitação", use_container_width=True):
-                # Filtra onde a Categoria contem "Licitação" (case insensitive)
+                # Filtra Licitação
                 df_licitacao = df_exibir[df_exibir['Categoria'].astype(str).str.contains('Licitação', case=False, na=False)]
                 
                 if not df_licitacao.empty:
@@ -118,21 +113,22 @@ def render_exportacao():
                         mime="application/pdf"
                     )
                 else:
-                    st.warning("Nenhum registro de Licitação encontrado nestes dados.")
+                    st.warning("Nenhum registro de Licitação encontrado.")
 
     elif 'relatorio_cache' in st.session_state:
-        st.info("Nenhum dado encontrado para os filtros selecionados.")
+        st.info("Nenhum dado encontrado.")
 
 
-# --- FUNÇÃO DO PDF (Mantida e Ajustada) ---
+# --- FUNÇÃO PDF AJUSTADA PARA NOVA COLUNA ---
 def gerar_pdf_treecomex(df, titulo="Relatório"):
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=10*mm, leftMargin=10*mm, topMargin=15*mm, bottomMargin=15*mm)
+    # Margens menores para caber mais colunas
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=5*mm, leftMargin=5*mm, topMargin=10*mm, bottomMargin=10*mm)
     
     elementos = []
     styles = getSampleStyleSheet()
 
-    # Logo e Título
+    # Logo
     try:
         logo = Image("assets/logo.png", width=40*mm, height=15*mm)
         logo.hAlign = 'RIGHT'
@@ -142,39 +138,55 @@ def gerar_pdf_treecomex(df, titulo="Relatório"):
     titulo_text = Paragraph(titulo, styles['Title'])
     
     data_header = [[titulo_text, logo]]
-    t_header = Table(data_header, colWidths=[200*mm, 70*mm])
+    t_header = Table(data_header, colWidths=[200*mm, 80*mm])
     t_header.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'LEFT'), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
     elementos.append(t_header)
-    elementos.append(Spacer(1, 10*mm))
+    elementos.append(Spacer(1, 5*mm))
 
-    # Dados da Tabela
-    # Converter colunas numéricas para string formatada R$
+    # Formatação dos Dados
     data_export = df.copy()
     for col in ["Entrada", "Saída", "Saldo"]:
         data_export[col] = data_export[col].apply(lambda x: f"{float(x):.2f}" if pd.notnull(x) and x != '' else "0.00")
     
-    # Prepara lista para o ReportLab
+    # Prepara dados para Table
     lista_dados = [data_export.columns.to_list()]
+    
+    style_normal = styles['Normal']
+    style_normal.fontSize = 7  # Fonte menor para caber texto
     
     for index, row in data_export.iterrows():
         linha = []
         for item in row:
-            # Envolve texto longo em Paragraph para quebrar linha
-            if isinstance(item, str) and len(item) > 25:
-                 linha.append(Paragraph(item, styles['Normal']))
+            # Paragraph apenas em textos longos para quebrar linha
+            txt = str(item)
+            if len(txt) > 20:
+                 linha.append(Paragraph(txt, style_normal))
             else:
-                 linha.append(str(item))
+                 linha.append(txt)
         lista_dados.append(linha)
 
-    # Larguras manuais ajustadas
-    col_widths = [30*mm, 25*mm, 40*mm, 50*mm, 20*mm, 30*mm, 25*mm, 25*mm, 25*mm]
+    # --- NOVAS LARGURAS (Total Disponível ~285mm) ---
+    # [Empresa, Banco, Data, Movimentação, Descrição, Tipo, Categoria, Entrada, Saída, Saldo]
+    # Ajustei diminuindo um pouco cada uma para caber a Empresa
+    col_widths = [
+        20*mm,  # Empresa (curto)
+        25*mm,  # Banco
+        22*mm,  # Data
+        38*mm,  # Movimentação (reduzido levemente)
+        45*mm,  # Descrição (reduzido levemente)
+        15*mm,  # Tipo (C/D curto)
+        25*mm,  # Categoria
+        22*mm,  # Entrada
+        22*mm,  # Saída
+        22*mm   # Saldo
+    ]
     
     t = Table(lista_dados, colWidths=col_widths, repeatRows=1)
     t.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#58A6D8")),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ('FONTSIZE', (0, 0), (-1, -1), 6.5), # Fonte reduzida
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
