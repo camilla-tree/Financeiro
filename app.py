@@ -23,6 +23,14 @@ def get_nome_usuario() -> str:
 # 1) Page config
 st.set_page_config(page_title="Treecomex • Conciliação", layout="wide")
 
+# 2. Inclusão da Logo na parte superior esquerda (Sidebar)
+# Substitua 'logo.png' pelo caminho real do seu arquivo ou uma URL
+try:
+    st.sidebar.image("logo.png", use_container_width=True)
+except:
+    # Caso a imagem não seja encontrada, exibe o nome para não quebrar o código
+    st.sidebar.subheader("Treecomex")
+
 st.markdown(
     """
     <style>
