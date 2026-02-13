@@ -379,38 +379,33 @@ def render_conciliacao():
         st.session_state["conc_force_reload"] = True
 
     base_sql = """
-    SELECT
-      mb.id AS movimento_id,
-      mb.dt_movimento,
-      mb.descricao,
-      mb.valor,
-
-      mb.tipo_id,
-      mt.nome AS tipo_nome,
-
-      mb.categoria_id,
-      cf.nome AS categoria_nome,
-     
-
-      co.id AS conciliacao_id,
-      co.status_id AS conciliacao_status_id,
-      co.processo_id,
-      co.observacao,
-
-      p.referencia AS processo_ref,
-      c.nome AS cliente_nome
-
-    FROM movimento_bancario mb
-    LEFT JOIN categoria_financeira cf ON cf.id = mb.categoria_id
-    LEFT JOIN movimento_tipo mt ON mt.id = mb.tipo_id
-
-    LEFT JOIN conciliacao co ON co.movimento_bancario_id = mb.id
-    LEFT JOIN processo p ON p.id = co.processo_id
-    LEFT JOIN cliente c ON c.id = p.cliente_id
-
-    WHERE mb.conta_bancaria_id = %s
-      AND mb.dt_movimento BETWEEN %s AND %s
-    """
+        SELECT
+        mb.id AS movimento_id,
+        mb.dt_movimento,
+        mb.descricao,
+        mb.valor,
+        mb.tipo_id,
+        mt.nome AS tipo_nome,
+        mb.categoria_id,
+        cf.nome AS categoria_nome,
+        co.id AS conciliacao_id,
+        co.status_id AS conciliacao_status_id,
+        co.observacao,
+        -- Nova lógica para múltiplos processos
+        (SELECT STRING_AGG(p.referencia, ', ') 
+        FROM movimento_processo mp 
+        JOIN processo p ON p.id = mp.processo_id 
+        WHERE mp.movimento_bancario_id = mb.id) AS processo_ref,
+        -- Cliente (pegamos o primeiro vinculado ou deixamos via conciliação)
+        c.nome AS cliente_nome
+        FROM movimento_bancario mb
+        LEFT JOIN categoria_financeira cf ON cf.id = mb.categoria_id
+        LEFT JOIN movimento_tipo mt ON mt.id = mb.tipo_id
+        LEFT JOIN conciliacao co ON co.movimento_bancario_id = mb.id
+        LEFT JOIN cliente c ON c.id = co.cliente_id
+        WHERE mb.conta_bancaria_id = %s
+        AND mb.dt_movimento BETWEEN %s AND %s
+        """
     params = [conta_bancaria_id, dt_ini, dt_fim]
 
     if not mostrar_todos:
@@ -498,25 +493,18 @@ def render_conciliacao():
     # considera conciliado se existir conciliacao_id (fase 1)
     is_conciliado_series = df_mov["conciliacao_id"].notna()
 
-    df_tbl = pd.DataFrame(
-        {
-            "ID": df_mov["movimento_id"].astype(int),
-            "Data da Movimentação": df_mov["dt_movimento"],
-            "Descrição": df_mov["descricao"].astype(str),
-            "Valor": df_mov["valor"],
-            "Tipo": df_mov["tipo_id"].apply(_tipo_label),
-            "Observação": df_mov["observacao"].fillna("").astype(str),
-            "Categoria": df_mov["categoria_id"].apply(_cat_label),
-
-
-            "Processo": df_mov["processo_id"].apply(_proc_label),
-
-            "Cliente": df_mov["cliente_nome"].fillna("-"),
-
-            # flags
-            "Conciliado": (is_conciliado_series).astype(bool),
-        }
-    )
+    df_tbl = pd.DataFrame({
+        "ID": df_mov["movimento_id"].astype(int),
+        "Data": df_mov["dt_movimento"],
+        "Descrição": df_mov["descricao"].astype(str),
+        "Valor": df_mov["valor"],
+        "Tipo": df_mov["tipo_id"].apply(_tipo_label),
+        "Processo": df_mov["processo_ref"].fillna(""), # Agora vindo da subquery
+        "Observação": df_mov["observacao"].fillna("").astype(str),
+        "Categoria": df_mov["categoria_id"].apply(_cat_label),
+        "Cliente": df_mov["cliente_nome"].fillna("-"),
+        "Conciliado": is_conciliado_series.astype(bool),
+    })
 
     edited = st.data_editor(
         df_tbl,
@@ -563,3 +551,29 @@ def render_conciliacao():
     st.cache_data.clear()
     st.session_state["conc_force_reload"] = True
     st.rerun()
+
+# --- Nova Seção para Vínculos N:N ---
+    st.divider()
+    st.subheader("🔗 Gerenciar Múltiplos Processos")
+    st.caption("Use esta seção para atribuir um lançamento a um ou mais processos específicos.")
+
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c1:
+        vinc_mov_id = st.number_input("ID do Movimento", min_value=0, step=1, key="vinc_mid")
+    with c2:
+        proc_list = ["Selecionar..."] + df_processos["referencia"].tolist()
+        vinc_proc_ref = st.selectbox("Vincular ao Processo", proc_list, key="vinc_pref")
+    with c3:
+        vinc_valor = st.number_input("Valor do Rateio (Opcional)", min_value=0.0, key="vinc_val")
+
+    if st.button("Confirmar Vínculo", use_container_width=True):
+        if vinc_mov_id > 0 and vinc_proc_ref != "Selecionar...":
+            p_id = int(df_processos[df_processos["referencia"] == vinc_proc_ref]["id"].iloc[0])
+            _run_sql("""
+                INSERT INTO movimento_processo (movimento_bancario_id, processo_id, valor_atribuido)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (movimento_bancario_id, processo_id) DO NOTHING
+            """, (int(vinc_mov_id), p_id, vinc_valor))
+            st.success(f"Vínculo criado para o Movimento {vinc_mov_id}!")
+            st.cache_data.clear()
+            st.rerun()

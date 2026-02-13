@@ -93,96 +93,36 @@ def aplicar_changes_no_banco(
     usuario_id: Optional[int],
     status_confirmada_id: int,
 ) -> None:
-    """
-    Aplica changes em transação única.
-    Mantém a mesma lógica do seu código atual:
-    - sempre atualiza categoria_id em movimento_bancario
-    - se want_conc=True: UPSERT em conciliacao
-    - se want_conc=False: DELETE conciliacao
-
-    Observação: a regra atual usa (SELECT cliente_id FROM processo WHERE id = %s)
-    baseado no processo_id.
-    """
     if not changes:
         return
 
     with fresh_conn() as conn:
-        try:
-            # evita estado "aborted transaction"
-            try:
-                conn.rollback()
-            except Exception:
-                pass
+        with conn.cursor() as cur:
+            for mid, new_cat_id, new_proc_id, want_conc, new_obs in changes:
+                # 1) Categoria sempre atualiza no movimento
+                cur.execute(
+                    "UPDATE movimento_bancario SET categoria_id = %s WHERE id = %s",
+                    (new_cat_id, int(mid)),
+                )
 
-            with conn.cursor() as cur:
-                for mid, new_cat_id, new_proc_id, want_conc, new_obs in changes:
-                    # 1) Categoria sempre atualiza no movimento
+                # 2) Conciliação Mestre (Sem processo_id agora)
+                if want_conc:
                     cur.execute(
                         """
-                        UPDATE movimento_bancario
-                        SET categoria_id = %s
-                        WHERE id = %s
+                        INSERT INTO conciliacao (
+                            movimento_bancario_id, status_id, regra_aplicada,
+                            probabilidade, usuario_confirmacao_id, dt_confirmacao, observacao
+                        )
+                        VALUES (%s, %s, 'MANUAL', 1.0, %s, NOW(), %s)
+                        ON CONFLICT (movimento_bancario_id)
+                        DO UPDATE SET
+                            status_id = EXCLUDED.status_id,
+                            usuario_confirmacao_id = EXCLUDED.usuario_confirmacao_id,
+                            dt_confirmacao = NOW(),
+                            observacao = EXCLUDED.observacao
                         """,
-                        (new_cat_id, int(mid)),
+                        (int(mid), int(status_confirmada_id), usuario_id, new_obs),
                     )
-
-                    # 2) Conciliação (fase 1)
-                    if want_conc:
-                        cur.execute(
-                            """
-                            INSERT INTO conciliacao (
-                                movimento_bancario_id,
-                                processo_id,
-                                cliente_id,
-                                status_id,
-                                regra_aplicada,
-                                probabilidade,
-                                usuario_confirmacao_id,
-                                dt_confirmacao,
-                                observacao
-                            )
-                            VALUES (
-                                %s,
-                                %s,
-                                (SELECT cliente_id FROM processo WHERE id = %s),
-                                %s,
-                                'MANUAL',
-                                1.0,
-                                %s,
-                                NOW(),
-                                %s
-                            )
-                            ON CONFLICT (movimento_bancario_id)
-                            DO UPDATE SET
-                                processo_id = EXCLUDED.processo_id,
-                                cliente_id = EXCLUDED.cliente_id,
-                                status_id = EXCLUDED.status_id,
-                                regra_aplicada = 'MANUAL',
-                                probabilidade = 1.0,
-                                usuario_confirmacao_id = EXCLUDED.usuario_confirmacao_id,
-                                dt_confirmacao = NOW(),
-                                observacao = EXCLUDED.observacao
-                            """,
-                            (
-                                int(mid),
-                                new_proc_id,
-                                new_proc_id,
-                                int(status_confirmada_id),
-                                usuario_id,
-                                new_obs,
-                            ),
-                        )
-                    else:
-                        cur.execute(
-                            "DELETE FROM conciliacao WHERE movimento_bancario_id = %s",
-                            (int(mid),),
-                        )
-
-            conn.commit()
-
-        except Exception:
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-            raise
+                else:
+                    cur.execute("DELETE FROM conciliacao WHERE movimento_bancario_id = %s", (int(mid),))
+        conn.commit()
