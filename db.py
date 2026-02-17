@@ -86,11 +86,18 @@ def fresh_conn():
 # -----------------------------
 def fetch_df(sql: str, params: Optional[Tuple[Any, ...]] = None) -> pd.DataFrame:
     with fresh_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, params or ())
-            rows = cur.fetchall()
-            cols = [c.name for c in cur.description] if cur.description else []
-    return pd.DataFrame(rows, columns=cols)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, params or ())
+                rows = cur.fetchall()
+                cols = [c.name for c in cur.description] if cur.description else []
+            # O commit aqui avisa ao banco que a leitura acabou e ele pode liberar a transação
+            conn.commit() 
+            return pd.DataFrame(rows, columns=cols)
+        except Exception as e:
+            # ESSA É A MÁGICA: Se der erro, desfaz tudo e devolve a conexão limpa!
+            conn.rollback()
+            raise e
 
 
 def execute(sql: str, params: Optional[Tuple[Any, ...]] = None) -> int:

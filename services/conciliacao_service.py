@@ -12,7 +12,7 @@ from db import fresh_conn
 @dataclass(frozen=True)
 class ConciliacaoMaps:
     cat_id_by_label: Dict[str, Optional[int]]
-    proc_id_by_label: Dict[str, Optional[int]]
+    # proc_id_by_label removido pois a gestão agora é via N:N na outra seção
 
 
 def _safe_int(v: Any) -> Optional[int]:
@@ -34,10 +34,7 @@ def calcular_changes(
     """
     Retorna lista de changes no formato:
       (movimento_id, new_cat_id, new_proc_id, want_conc, new_obs)
-
-    Mantém as mesmas regras da fase 1:
-    - Se já estava conciliado no DB, não permite "desconciliar" (força want_conc=True).
-    - Detecta mudanças por: categoria, processo, observacao ou flag conciliado.
+      Nota: new_proc_id será sempre None aqui, pois o vínculo é feito na seção dedicada.
     """
     current_is_conc = {
         int(r["movimento_id"]): bool(pd.notna(r["conciliacao_id"]))
@@ -46,28 +43,27 @@ def calcular_changes(
 
     changes: List[Tuple[int, Optional[int], Optional[int], bool, Optional[str]]] = []
 
-    # Para lookup rápido (evita df_mov[df_mov[...] == mid] em loop)
+    # Para lookup rápido
     df_mov_by_id = df_mov.set_index("movimento_id", drop=False)
 
     for i in range(len(edited)):
         mid = int(edited.loc[i, "ID"])
 
         new_cat_label = edited.loc[i, "Categoria"]
-        new_proc_label = edited.loc[i, "Processo"]
+        # Processo na tabela é apenas visualização agora, ignoramos na edição em massa
 
         new_cat_id = maps.cat_id_by_label.get(new_cat_label)
-        new_proc_id = maps.proc_id_by_label.get(new_proc_label)
+        new_proc_id = None # Vínculo gerido separadamente
 
         want_conc = bool(edited.loc[i, "Conciliado"])
         already_conc = current_is_conc.get(mid, False)
 
-        # fase 1: se já conciliado no banco, não pode voltar pra não conciliado
+        # Regra: se já conciliado, não permite desmarcar por aqui (fase 1)
         if already_conc and (not want_conc):
             want_conc = True
 
         old_row = df_mov_by_id.loc[mid]
         old_cat = _safe_int(old_row.get("categoria_id"))
-        old_proc = _safe_int(old_row.get("processo_id"))
         old_obs = (old_row.get("observacao") or "")
 
         new_obs = edited.loc[i, "Observação"]
@@ -75,9 +71,9 @@ def calcular_changes(
             new_obs = ""
         new_obs_str = str(new_obs)
 
+        # Detecta mudanças (Categoria, Observação ou Status Conciliado)
         if (
             new_cat_id != old_cat
-            or new_proc_id != old_proc
             or new_obs_str != old_obs
             or (want_conc != already_conc)
         ):
@@ -97,32 +93,38 @@ def aplicar_changes_no_banco(
         return
 
     with fresh_conn() as conn:
-        with conn.cursor() as cur:
-            for mid, new_cat_id, new_proc_id, want_conc, new_obs in changes:
-                # 1) Categoria sempre atualiza no movimento
-                cur.execute(
-                    "UPDATE movimento_bancario SET categoria_id = %s WHERE id = %s",
-                    (new_cat_id, int(mid)),
-                )
-
-                # 2) Conciliação Mestre (Sem processo_id agora)
-                if want_conc:
+        try:
+            with conn.cursor() as cur:
+                for mid, new_cat_id, _, want_conc, new_obs in changes:
+                    # 1) Categoria atualiza no movimento_bancario
                     cur.execute(
-                        """
-                        INSERT INTO conciliacao (
-                            movimento_bancario_id, status_id, regra_aplicada,
-                            probabilidade, usuario_confirmacao_id, dt_confirmacao, observacao
-                        )
-                        VALUES (%s, %s, 'MANUAL', 1.0, %s, NOW(), %s)
-                        ON CONFLICT (movimento_bancario_id)
-                        DO UPDATE SET
-                            status_id = EXCLUDED.status_id,
-                            usuario_confirmacao_id = EXCLUDED.usuario_confirmacao_id,
-                            dt_confirmacao = NOW(),
-                            observacao = EXCLUDED.observacao
-                        """,
-                        (int(mid), int(status_confirmada_id), usuario_id, new_obs),
+                        "UPDATE movimento_bancario SET categoria_id = %s WHERE id = %s",
+                        (new_cat_id, int(mid)),
                     )
-                else:
-                    cur.execute("DELETE FROM conciliacao WHERE movimento_bancario_id = %s", (int(mid),))
-        conn.commit()
+
+                    # 2) Conciliação (Tabela Mestre)
+                    if want_conc:
+                        cur.execute(
+                            """
+                            INSERT INTO conciliacao (
+                                movimento_bancario_id, status_id, regra_aplicada,
+                                probabilidade, usuario_confirmacao_id, dt_confirmacao, observacao
+                            )
+                            VALUES (%s, %s, 'MANUAL', 1.0, %s, NOW(), %s)
+                            ON CONFLICT (movimento_bancario_id)
+                            DO UPDATE SET
+                                status_id = EXCLUDED.status_id,
+                                usuario_confirmacao_id = EXCLUDED.usuario_confirmacao_id,
+                                dt_confirmacao = NOW(),
+                                observacao = EXCLUDED.observacao
+                            """,
+                            (int(mid), int(status_confirmada_id), usuario_id, new_obs),
+                        )
+                    else:
+                        cur.execute("DELETE FROM conciliacao WHERE movimento_bancario_id = %s", (int(mid),))
+            # Só faz o commit se tudo deu certo
+            conn.commit()
+        except Exception as e:
+            # Se deu qualquer erro no meio do caminho, desfaz e não trava o banco
+            conn.rollback()
+            raise e
