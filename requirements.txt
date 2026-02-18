@@ -7,3 +7,4 @@ pdfplumber
 pdfminer.six
 Pillow
 psycopg_pool
+openpyxl
