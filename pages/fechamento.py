@@ -84,15 +84,87 @@ def render_fechamento():
         if st.button("Pesquisar", use_container_width=True):
             st.warning("A lógica de pesquisa será implementada em breve.")
 
-    # Seção de visualização do Excel
+    # Seção de processamento do Excel
     if uploaded_file is not None:
         try:
-            df_excel = pd.read_excel(uploaded_file)
-            with st.expander("👁️ Visualizar dados brutos da planilha importada", expanded=False):
-                st.dataframe(df_excel, use_container_width=True)
-        except Exception as e:
-            st.error(f"Erro ao ler o arquivo Excel: {e}")
+            # 1. Obter a DI da aba "Resumo" (Célula A6 = Linha 5, Coluna 0 no Pandas)
+            df_resumo = pd.read_excel(uploaded_file, sheet_name="Resumo", header=None)
+            numero_di = df_resumo.iloc[5, 0]
+            
+            st.success(f"✅ DI encontrada: **{numero_di}**")
 
+            # 2. Obter os dados da aba "Rateio de Produtos"
+            # O parâmetro usecols permite ler apenas as colunas exatas do Excel
+            df_bruto = pd.read_excel(
+                uploaded_file, 
+                sheet_name="Rateio de Produtos", 
+                usecols="C, D, E, I, R, U, X, AA"
+            )
+            
+            # Renomear as colunas na ordem exata (C, D, E, I, R, U, X, AA)
+            df_bruto.columns = ["NCM", "PRODUTO", "QUANT", "VALOR TOTAL R$", "II %", "IPI %", "PIS %", "CONFINS %"]
+            
+            # 3. Limpeza: Garantir que tudo é número (ignorar linhas em branco ou textos perdidos)
+            for col in ["QUANT", "VALOR TOTAL R$", "II %", "IPI %", "PIS %", "CONFINS %"]:
+                df_bruto[col] = pd.to_numeric(df_bruto[col], errors="coerce").fillna(0)
+                
+            # Filtra removendo linhas onde não tem Produto preenchido
+            df_bruto = df_bruto.dropna(subset=["PRODUTO"])
+                
+            # 4. Cálculos Matemáticos de Nacionalização
+            df_calc = df_bruto.copy()
+            
+            # II
+            df_calc["II NACIONALIZACAO %"] = df_calc["II %"] / 100
+            df_calc["II NACIONALIZACAO VALOR"] = df_calc["VALOR TOTAL R$"] * df_calc["II NACIONALIZACAO %"]
+            
+            # IPI (Base = Valor Total + II)
+            df_calc["IPI NACIONALIZACAO %"] = df_calc["IPI %"] / 100
+            df_calc["IPI NACIONALIZACAO VALOR"] = (df_calc["VALOR TOTAL R$"] + df_calc["II NACIONALIZACAO VALOR"]) * df_calc["IPI NACIONALIZACAO %"]
+            
+            # PIS
+            df_calc["PIS NACIONALIZACAO %"] = df_calc["PIS %"] / 100
+            df_calc["PIS NACIONALIZACAO VALOR"] = df_calc["VALOR TOTAL R$"] * df_calc["PIS NACIONALIZACAO %"]
+            
+            # COFINS
+            df_calc["CONFINS NACIONALIZACAO %"] = df_calc["CONFINS %"] / 100
+            df_calc["CONFINS NACIONALIZACAO VALOR"] = df_calc["VALOR TOTAL R$"] * df_calc["CONFINS NACIONALIZACAO %"]
+            
+            # 5. Organizar as colunas na ordem solicitada
+            colunas_finais = [
+                "PRODUTO", "NCM", "QUANT", "VALOR TOTAL R$",
+                "II NACIONALIZACAO %", "II NACIONALIZACAO VALOR",
+                "IPI NACIONALIZACAO %", "IPI NACIONALIZACAO VALOR",
+                "PIS NACIONALIZACAO %", "PIS NACIONALIZACAO VALOR",
+                "CONFINS NACIONALIZACAO %", "CONFINS NACIONALIZACAO VALOR"
+            ]
+            df_final = df_calc[colunas_finais]
+            
+            # Guardamos na memória para usar no formulário abaixo depois
+            st.session_state["fechamento_di"] = str(numero_di)
+            st.session_state["fechamento_df_rateio"] = df_final
+
+            # 6. Exibir o resultado final mastigado
+            with st.expander("👁️ Visualizar Rateio e Impostos Calculados", expanded=False):
+                st.dataframe(
+                    df_final, 
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "VALOR TOTAL R$": st.column_config.NumberColumn(format="R$ %.2f"),
+                        "II NACIONALIZACAO %": st.column_config.NumberColumn(format="%.4f"),
+                        "II NACIONALIZACAO VALOR": st.column_config.NumberColumn(format="R$ %.2f"),
+                        "IPI NACIONALIZACAO %": st.column_config.NumberColumn(format="%.4f"),
+                        "IPI NACIONALIZACAO VALOR": st.column_config.NumberColumn(format="R$ %.2f"),
+                        "PIS NACIONALIZACAO %": st.column_config.NumberColumn(format="%.4f"),
+                        "PIS NACIONALIZACAO VALOR": st.column_config.NumberColumn(format="R$ %.2f"),
+                        "CONFINS NACIONALIZACAO %": st.column_config.NumberColumn(format="%.4f"),
+                        "CONFINS NACIONALIZACAO VALOR": st.column_config.NumberColumn(format="R$ %.2f"),
+                    }
+                )
+                
+        except Exception as e:
+            st.error(f"Erro ao ler a planilha. Verifique se as abas 'Resumo' e 'Rateio de Produtos' existem no arquivo. Detalhe técnico: {e}")
     st.divider()
 
     # ==========================================
