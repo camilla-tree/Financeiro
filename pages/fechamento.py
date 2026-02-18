@@ -65,11 +65,39 @@ def _ensure_despesas_template(existing: pd.DataFrame) -> pd.DataFrame:
 
 def render_fechamento():
     st.title("📊 Fechamento (v1)")
-
     st.caption("1 fechamento por DI/DUIMP • TOTAL CFR é calculado automaticamente (FOB + Frete + Adicional).")
     st.divider()
 
-    # ===== Sidebar: escolher fechamento existente ou criar novo
+    # ==========================================
+    # 1. NOVA ÁREA: Importação e Pesquisa (Topo)
+    # ==========================================
+    col_import, col_search = st.columns([1, 1], gap="large")
+
+    with col_import:
+        st.markdown("#### 📥 Importar Excel")
+        uploaded_file = st.file_uploader("Selecione a planilha de fechamento", type=["xlsx", "xls"])
+
+    with col_search:
+        st.markdown("#### 🔍 Verificar Existência")
+        st.info("Pesquise se este fechamento já foi cadastrado no sistema.")
+        busca_fechamento = st.text_input("Referência do Processo ou ID:")
+        if st.button("Pesquisar", use_container_width=True):
+            st.warning("A lógica de pesquisa será implementada em breve.")
+
+    # Seção de visualização do Excel
+    if uploaded_file is not None:
+        try:
+            df_excel = pd.read_excel(uploaded_file)
+            with st.expander("👁️ Visualizar dados brutos da planilha importada", expanded=False):
+                st.dataframe(df_excel, use_container_width=True)
+        except Exception as e:
+            st.error(f"Erro ao ler o arquivo Excel: {e}")
+
+    st.divider()
+
+    # ==========================================
+    # 2. Sidebar: escolher fechamento existente 
+    # ==========================================
     with st.sidebar:
         st.subheader("Fechamentos")
         df_list = list_fechamentos(limit=50)
@@ -92,11 +120,13 @@ def render_fechamento():
         if loaded:
             initial = loaded
 
-    # ===== Form principal
+    # ==========================================
+    # 3. MANTIDO: Form principal (Colunas A e B)
+    # ==========================================
     colA, colB = st.columns([1, 1], gap="large")
 
     with colA:
-        st.subheader("Identificação (manual)")
+        st.subheader("Identificação (manual / auto)")
         empresa = st.text_input("Empresa", value=str(initial.get("empresa", "")))
         cliente = st.text_input("Cliente", value=str(initial.get("cliente", "")))
         referencia = st.text_input("Referência", value=str(initial.get("referencia", "")))
@@ -106,7 +136,7 @@ def render_fechamento():
             value=initial.get("data") or date.today(),
         )
 
-        st.subheader("Valores base (manual)")
+        st.subheader("Valores base (manual / auto)")
         valor_fob = st.number_input("Valor FOB (USD)", min_value=0.0, value=float(initial.get("valor_fob_usd") or 0), step=10.0)
         frete = st.number_input("Frete (USD)", min_value=0.0, value=float(initial.get("frete_usd") or 0), step=10.0)
         adicional = st.number_input("Adicional (USD)", min_value=0.0, value=float(initial.get("adicional_usd") or 0), step=10.0)
@@ -120,14 +150,14 @@ def render_fechamento():
         st.metric("TOTAL CFR (BRL) (estimado)", f"{total_cfr_brl:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
     with colB:
-        st.subheader("Logística (manual)")
+        st.subheader("Logística (manual / auto)")
         origem = st.text_input("Origem", value=str(initial.get("origem") or ""))
         modal = st.text_input("Modal", value=str(initial.get("modal") or ""))
         destino = st.text_input("Destino", value=str(initial.get("destino") or ""))
         qtde_container = st.number_input("Qtde de container", min_value=0, value=int(initial.get("qtde_container") or 0), step=1)
         bl_awb = st.text_input("BL/AWB", value=str(initial.get("bl_awb") or ""))
 
-        st.subheader("Despesas gerais (manual)")
+        st.subheader("Despesas gerais (manual / auto)")
         if selected_id:
             df_desp = get_despesas(selected_id)
         else:
@@ -157,18 +187,28 @@ def render_fechamento():
 
     st.divider()
 
-    # ===== Ações
+    # ==========================================
+    # 4. Ações (Salvar, Limpar, Exportar)
+    # ==========================================
     col1, col2, col3 = st.columns([1, 1, 2])
 
     with col1:
-        salvar = st.button("💾 Salvar fechamento", use_container_width=True)
+        salvar = st.button("💾 Salvar fechamento", type="primary", use_container_width=True)
 
     with col2:
         reset = st.button("🧹 Limpar formulário", use_container_width=True)
+        
+    with col3:
+        # NOVO: Botão de exportar
+        exportar = st.button("📤 Exportar Fechamento", use_container_width=True)
 
+    # Lógicas de clique de botão
     if reset:
         st.session_state.pop("despesas_editor", None)
         st.rerun()
+        
+    if exportar:
+        st.info("A lógica de exportação (PDF/Excel) será implementada em breve.")
 
     if salvar:
         # validação mínima
@@ -212,3 +252,18 @@ def render_fechamento():
 
         st.success(f"Fechamento salvo com sucesso (ID {new_id}).")
         st.rerun()
+
+    st.divider()
+
+    # ==========================================
+    # 5. NOVA ÁREA: Histórico de Fechamentos
+    # ==========================================
+    with st.expander("📋 Histórico de Relatórios de Fechamentos", expanded=False):
+        st.caption("Abaixo estarão listados outros relatórios e consolidações históricas.")
+        # Placeholder visual
+        st.dataframe(pd.DataFrame({
+            "Processo": ["REF-001", "REF-002"],
+            "Cliente": ["Cliente A", "Cliente B"],
+            "Data": ["18/02/2026", "15/02/2026"],
+            "Status": ["Finalizado", "Em Análise"]
+        }), hide_index=True, use_container_width=True)
