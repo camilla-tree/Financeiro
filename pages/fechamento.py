@@ -68,9 +68,11 @@ def _ensure_despesas_template(existing: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 def _buscar_processo_por_di(di_str: str) -> dict | None:
+    # AQUI FOI ADICIONADA A BUSCA DA COLUNA MARKUP DO CLIENTE
     sql = """
         SELECT p.id as processo_id, p.referencia, p.data_registro, 
-               e.nome as empresa_nome, c.nome as cliente_nome
+               e.nome as empresa_nome, c.nome as cliente_nome,
+               c.markup as cliente_markup
         FROM processo p
         LEFT JOIN empresa e ON p.empresa_id = e.id
         LEFT JOIN cliente c ON p.cliente_id = c.id
@@ -97,7 +99,7 @@ def _extract_cell(df: pd.DataFrame, row_idx: int, col_idx: int) -> float:
 
 def render_fechamento():
     st.title("📊 Fechamento (v1)")
-    st.caption("Fluxo de Importação: Identificação > Rateio > Valores > Logística > Despesas")
+    st.caption("Fluxo de Importação: Identificação > Rateio > Valores > Logística > Despesas > NF Saída")
     st.divider()
 
     # Variáveis de Estado
@@ -105,9 +107,11 @@ def render_fechamento():
         st.session_state["f_dados_excel"] = {}
     if "f_df_rateio" not in st.session_state:
         st.session_state["f_df_rateio"] = pd.DataFrame()
+    if "f_markup_cliente" not in st.session_state:
+        st.session_state["f_markup_cliente"] = 6.0
 
     # ==========================================
-    # 1. ÁREA DE IMPORTAÇÃO (COM BOTÃO DE LIMPAR)
+    # 1. ÁREA DE IMPORTAÇÃO
     # ==========================================
     col_import, col_search = st.columns([1, 1], gap="large")
 
@@ -115,17 +119,16 @@ def render_fechamento():
         st.markdown("#### 📥 Importar Excel")
         uploaded_file = st.file_uploader("Selecione a planilha (Rateio/Resumo)", type=["xlsx", "xls"])
         
-        # --- NOVO: Botão para limpar a memória ---
         if st.button("🧹 Limpar Dados / Nova Importação", use_container_width=True):
             st.session_state.pop("f_dados_excel", None)
             st.session_state.pop("f_df_rateio", None)
+            st.session_state.pop("f_markup_cliente", None)
             st.rerun()
 
     with col_search:
         st.markdown("#### 🔍 Histórico")
         st.info("Pesquisa de fechamentos anteriores (em breve).")
 
-    # Variáveis padrão
     val_di = ""
     val_empresa = ""
     val_cliente = ""
@@ -137,20 +140,17 @@ def render_fechamento():
     # ==========================================
     if uploaded_file is not None:
         try:
-            # --- A. Leitura da Aba RESUMO ---
             uploaded_file.seek(0)
             df_resumo = pd.read_excel(uploaded_file, sheet_name="Resumo", header=None)
             
             if len(df_resumo) > 5:
                 val_di = str(df_resumo.iloc[5, 0]).strip()
             
-            # Extração dos Valores
             dados_lidos = {
                 "fob_brl": _extract_cell(df_resumo, 8, 0),
                 "frete_brl": _extract_cell(df_resumo, 11, 0),
                 "seguro_brl": _extract_cell(df_resumo, 11, 1),
                 "cif_brl": _extract_cell(df_resumo, 8, 2),
-                
                 "ii_brl": _extract_cell(df_resumo, 19, 3),
                 "ipi_brl": _extract_cell(df_resumo, 22, 3),
                 "pis_brl": _extract_cell(df_resumo, 19, 4),
@@ -159,7 +159,6 @@ def render_fechamento():
             }
             st.session_state["f_dados_excel"] = dados_lidos
 
-            # --- B. Busca DI no Banco ---
             if val_di:
                 proc_info = _buscar_processo_por_di(val_di)
                 if proc_info:
@@ -170,10 +169,14 @@ def render_fechamento():
                     dt_bd = proc_info.get("data_registro")
                     if dt_bd:
                         val_data = dt_bd
+                        
+                    # Salva o markup do banco na sessão
+                    m_cliente = proc_info.get("cliente_markup")
+                    if pd.notna(m_cliente) and m_cliente is not None:
+                        st.session_state["f_markup_cliente"] = float(m_cliente)
                 else:
                     st.warning(f"⚠️ **DI {val_di} não cadastrada**. Preencha manualmente.")
 
-            # --- C. Leitura da Aba RATEIO ---
             uploaded_file.seek(0)
             df_bruto = pd.read_excel(uploaded_file, sheet_name="Rateio de Produtos", usecols="C, D, E, I, R, U, X, AA")
             df_bruto.columns = ["NCM", "PRODUTO", "QUANT", "VALOR TOTAL R$", "II %", "IPI %", "PIS %", "CONFINS %"]
@@ -220,7 +223,6 @@ def render_fechamento():
     # 4. TABELA DE RATEIO
     # ==========================================
     df_rateio = st.session_state.get("f_df_rateio", pd.DataFrame())
-    
     with st.expander("📦 Rateio de Produtos e Impostos Detalhados", expanded=False):
         if not df_rateio.empty:
             st.dataframe(df_rateio, use_container_width=True, hide_index=True)
@@ -247,10 +249,8 @@ def render_fechamento():
     memoria = st.session_state.get("f_dados_excel", {})
     
     st.markdown("### 3. Valores Consolidados")
-    
     col_brl, col_tax, col_usd = st.columns([1.1, 1.5, 1], gap="large")
 
-    # --- 1. Mercadoria ---
     with col_brl:
         st.markdown("#### 🇧🇷 Mercadoria (R$)")
         v_fob_brl = st.number_input("F.O.B.", value=memoria.get("fob_brl", 0.0), format="%.2f")
@@ -261,7 +261,6 @@ def render_fechamento():
         st.markdown("---")
         v_cif_brl = st.number_input("VALOR CIF", value=memoria.get("cif_brl", 0.0), format="%.2f", disabled=True)
 
-    # --- 2. Impostos ---
     with col_tax:
         st.markdown("#### 🏛️ Totais de Impostos")
         
@@ -271,9 +270,6 @@ def render_fechamento():
         t_cofins = memoria.get("cofins_brl", 0.0)
         t_icms = memoria.get("icms_brl", 0.0)
 
-        def _calc_pct(val, base):
-            return (val / base * 100) if base > 0 else 0.0
-
         h1, h2, h3 = st.columns([0.6, 0.8, 1.2])
         h1.caption("") 
         h2.caption("**% Calc.**")
@@ -282,7 +278,7 @@ def render_fechamento():
         def tax_row(name, val, base):
             c1, c2, c3 = st.columns([0.6, 0.8, 1.2])
             c1.markdown(f"**{name}**") 
-            c2.text_input(f"p_{name}", value=f"{_calc_pct(val, base):.2f}%", disabled=True, label_visibility="collapsed")
+            c2.text_input(f"p_{name}", value=f"{_safe_div_pct(val, base):.2f}%", disabled=True, label_visibility="collapsed")
             c3.number_input(f"v_{name}", value=val, format="%.2f", disabled=True, label_visibility="collapsed")
 
         tax_row("II", t_ii, v_cif_brl)
@@ -298,11 +294,9 @@ def render_fechamento():
         total_geral_brl = v_cif_brl + total_impostos
         st.metric("TOTAL (CIF + Impostos)", f"R$ {total_geral_brl:,.2f}", delta="Custo Total")
 
-    # --- 3. Dólar ---
     with col_usd:
         st.markdown("#### 🇺🇸 Conversão (USD)")
         taxa = st.number_input("Taxa de Conversão", min_value=0.0, value=1.0, step=0.0001, format="%.4f")
-        
         if taxa > 0:
             usd_fob = v_fob_brl / taxa
             usd_frete = v_frete_brl / taxa
@@ -316,54 +310,99 @@ def render_fechamento():
     # 7. DESPESAS GERAIS E FECHAMENTO FINAL
     # ==========================================
     st.markdown("### 4. Despesas Gerais")
-    
     col_desp1, col_desp2 = st.columns([2, 1], gap="large")
 
     with col_desp1:
         df_desp = _ensure_despesas_template(pd.DataFrame())
-        
         edited_desp = st.data_editor(
-            df_desp,
-            use_container_width=True,
-            hide_index=True,
+            df_desp, use_container_width=True, hide_index=True,
             column_config={
                 "ordem": st.column_config.NumberColumn("Ordem", disabled=True, width="small"),
                 "descricao": st.column_config.TextColumn("Descrição", width="large", disabled=True),
                 "valor_brl": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f", required=True),
                 "estimado": st.column_config.CheckboxColumn("Estimado", width="small"),
-            },
-            key="despesas_editor"
+            }, key="despesas_editor"
         )
 
     with col_desp2:
-        st.info("Preencha os valores ao lado.")
-        
-        # SOMA DE DESPESAS (Corrigida conversão para float)
         soma_despesas = sum(float(_to_decimal(r.get("valor_brl"))) for _, r in edited_desp.iterrows())
-        
         st.markdown("---")
         st.metric("Total Despesas Nac.", f"R$ {soma_despesas:,.2f}")
         
-        # 1. Desembolso Total
         desembolso_final = total_geral_brl + soma_despesas
         st.metric("DESEMBOLSO TOTAL", f"R$ {desembolso_final:,.2f}", delta="Custo Final")
 
         st.divider()
-
-        # 2. Custo de Aquisição (Antes do Fator)
-        # Fórmula: Desembolso - (IPI + PIS + COFINS + ICMS) + Adicional
         impostos_recuperaveis = t_ipi + t_pis + t_cofins + t_icms
         custo_aquisicao = desembolso_final - impostos_recuperaveis + v_adic_brl
         
         st.markdown("##### Custo de Aquisição")
         st.caption("(Desembolso - Impostos Recup. + Adicional)")
-        st.metric(
-            label="VALOR FINAL",
-            value=f"R$ {custo_aquisicao:,.2f}",
-            delta="Antes do Fator",
-            delta_color="off"
-        )
+        st.metric("VALOR FINAL", f"R$ {custo_aquisicao:,.2f}", delta="Antes do Fator", delta_color="off")
+
+    st.divider()
+
+    # ==========================================
+    # 8. DADOS NF SAÍDA
+    # ==========================================
+    st.markdown("### 5. Dados NF Saída")
+    
+    # % Despesas Nacionalização
+    pct_desp_nac = _safe_div_pct(soma_despesas, v_cif_brl)
+    st.info(f"**% Despesas Nacionalização:** {pct_desp_nac:.2f}%  *(Total Despesas Nac. / VALOR CIF)*")
+
+    col_nf1, col_nf2, col_nf3 = st.columns([1, 1.2, 1.2], gap="large")
+
+    with col_nf1:
+        st.markdown("#### Parâmetros (%)")
+        pis_v_pct = st.number_input("P.I.S. Venda (%)", value=1.65, format="%.2f")
+        cofins_v_pct = st.number_input("COFINS Venda (%)", value=7.60, format="%.2f")
+        
+        # Puxa o Markup default do cliente carregado do banco
+        val_mkp = float(st.session_state.get("f_markup_cliente", 6.0))
+        markup_v_pct = st.number_input("MARK-UP (%)", value=val_mkp, format="%.2f")
+        icms_v_pct = st.number_input("I.C.M.S. Venda (%)", value=4.00, format="%.2f")
+        
+        # Puxa a alíquota efetiva do IPI da importação como sugestão
+        ipi_import_pct = _safe_div_pct(t_ipi, v_cif_brl + t_ii)
+        ipi_v_pct = st.number_input("I.P.I. Venda (%)", value=ipi_import_pct, format="%.2f")
+
+    with col_nf2:
+        st.markdown("#### Base de Cálculo")
+        soma_pct = pis_v_pct + cofins_v_pct + markup_v_pct + icms_v_pct
+        fator_divisor = (100.0 - soma_pct) / 100.0
+        
+        st.markdown(f"**Soma %:** {soma_pct:.2f}% *(PIS+COFINS+MKP+ICMS)*")
+        st.markdown(f"**Fator (100% - Soma):** {fator_divisor:.4f}")
+        
+        # BC Normal (Preço Venda = Custo / Fator)
+        bc_normal = (custo_aquisicao / fator_divisor) if fator_divisor > 0 else 0.0
+        
+        st.divider()
+        st.metric("BC NORMAL (NF Antes IPI)", f"R$ {bc_normal:,.2f}")
+        
+        val_ipi_venda = bc_normal * (ipi_v_pct / 100.0)
+        st.metric("I.P.I. VENDA", f"R$ {val_ipi_venda:,.2f}")
+
+    with col_nf3:
+        st.markdown("#### Valores Finais (R$)")
+        val_pis_v = bc_normal * (pis_v_pct / 100.0)
+        val_cofins_v = bc_normal * (cofins_v_pct / 100.0)
+        val_markup_v = bc_normal * (markup_v_pct / 100.0)
+        val_icms_v = bc_normal * (icms_v_pct / 100.0)
+        
+        st.markdown(f"**P.I.S.:** R$ {val_pis_v:,.2f}")
+        st.markdown(f"**COFINS:** R$ {val_cofins_v:,.2f}")
+        st.markdown(f"**MARK-UP:** R$ {val_markup_v:,.2f}")
+        st.markdown(f"**I.C.M.S.:** R$ {val_icms_v:,.2f}")
+        
+        st.divider()
+        total_nf_saida = bc_normal + val_ipi_venda
+        st.metric("TOTAL NF SAÍDA", f"R$ {total_nf_saida:,.2f}", delta="Faturamento")
+        
+        irpj_csll = val_markup_v * 0.34
+        st.caption(f"**IRPJ/CSLL (34% Lucro Real):** R$ {irpj_csll:,.2f}")
 
     st.write("")
-    if st.button("📤 Exportar Fechamento Completo", use_container_width=True):
+    if st.button("📤 Exportar Fechamento Completo", use_container_width=True, type="primary"):
         st.info("Em breve.")
