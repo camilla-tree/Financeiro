@@ -39,19 +39,27 @@ DESPESAS_TEMPLATE = [
     ("TX Analise DI - (Proseftur)", False),
 ]
 
-def _to_decimal(v: Any) -> Decimal:
-    try:
-        if v is None or str(v).strip() == "":
-            return Decimal("0")
-        if isinstance(v, (int, float, Decimal)):
-            return Decimal(str(v))
-        s = str(v).replace("R$", "").replace(" ", "").replace(".", "").replace(",", ".")
-        return Decimal(s)
-    except (InvalidOperation, ValueError):
-        return Decimal("0")
-
 def _to_float(v: Any) -> float:
-    return float(_to_decimal(v))
+    """Converte valores do Excel para float de forma resiliente."""
+    if v is None:
+        return 0.0
+    try:
+        # Tenta converter direto (se for número no Excel)
+        return float(v)
+    except (ValueError, TypeError):
+        # Se for string, tenta limpar formatação
+        s = str(v).strip()
+        if not s:
+            return 0.0
+        # Se tiver "R$" ou ",", assume formatação BR e converte
+        if "R$" in s or "," in s:
+            s = s.replace("R$", "").replace(" ", "").replace(".", "").replace(",", ".")
+        return float(s)
+
+def _safe_div_pct(numerador: float, denominador: float) -> float:
+    if denominador == 0 or pd.isna(denominador):
+        return 0.0
+    return (numerador / denominador) * 100
 
 def _ensure_despesas_template(existing: pd.DataFrame) -> pd.DataFrame:
     if existing is not None and not existing.empty:
@@ -79,16 +87,14 @@ def _buscar_processo_por_di(di_str: str) -> dict | None:
     return None
 
 def _extract_cell(df: pd.DataFrame, row_idx: int, col_idx: int) -> float:
+    """Extrai valor pelo índice (0-based)"""
     try:
         val = df.iloc[row_idx, col_idx]
+        if pd.isna(val):
+            return 0.0
         return _to_float(val)
     except IndexError:
         return 0.0
-
-def _safe_div_pct(numerador: float, denominador: float) -> float:
-    if denominador == 0:
-        return 0.0
-    return (numerador / denominador) * 100
 
 # ==========================================
 # RENDERIZAÇÃO DA TELA
@@ -99,7 +105,7 @@ def render_fechamento():
     st.caption("Fluxo de Importação: Identificação > Rateio > Valores > Logística")
     st.divider()
 
-    # Variáveis de Estado (Persistência)
+    # Variáveis de Estado
     if "f_dados_excel" not in st.session_state:
         st.session_state["f_dados_excel"] = {}
     if "f_df_rateio" not in st.session_state:
@@ -130,60 +136,74 @@ def render_fechamento():
     # ==========================================
     if uploaded_file is not None:
         try:
-            # A. Leitura da Aba RESUMO
+            # --- A. Leitura da Aba RESUMO ---
+            uploaded_file.seek(0) # Rebobina o arquivo para garantir leitura limpa
             df_resumo = pd.read_excel(uploaded_file, sheet_name="Resumo", header=None)
-            val_di = str(df_resumo.iloc[5, 0]).strip()
             
+            # Pega DI (Linha 6 Excel -> Indice 5 Pandas, Coluna A -> 0)
+            if len(df_resumo) > 5:
+                val_di = str(df_resumo.iloc[5, 0]).strip()
+            
+            # Extração dos Valores em Reais (Indices Pandas = Excel - 1)
+            # A9 -> 8, 0 | C9 -> 8, 2
             dados_lidos = {
                 "fob_brl": _extract_cell(df_resumo, 8, 0),
                 "frete_brl": _extract_cell(df_resumo, 11, 0),
                 "seguro_brl": _extract_cell(df_resumo, 11, 1),
                 "cif_brl": _extract_cell(df_resumo, 8, 2),
                 
-                "ii_brl": _extract_cell(df_resumo, 19, 3),
-                "ipi_brl": _extract_cell(df_resumo, 22, 3),
-                "pis_brl": _extract_cell(df_resumo, 19, 4),
-                "cofins_brl": _extract_cell(df_resumo, 22, 4),
-                "icms_brl": _extract_cell(df_resumo, 19, 1),
+                "ii_brl": _extract_cell(df_resumo, 19, 3),   # D20
+                "ipi_brl": _extract_cell(df_resumo, 22, 3),  # D23
+                "pis_brl": _extract_cell(df_resumo, 19, 4),  # E20
+                "cofins_brl": _extract_cell(df_resumo, 22, 4), # E23
+                "icms_brl": _extract_cell(df_resumo, 19, 1), # B20
             }
             st.session_state["f_dados_excel"] = dados_lidos
+            
+            # --- DEBUG: Verificador de Dados ---
+            with st.expander("🕵️ Debug: Verificar Leitura do Excel (Resumo)", expanded=False):
+                st.write("Verifique se os dados estão nas linhas corretas (Índice Pandas = Linha Excel - 1):")
+                st.dataframe(df_resumo.head(25)) # Mostra as primeiras 25 linhas para conferência
+                st.write("**Dados Extraídos:**", dados_lidos)
 
-            # B. Busca DI no Banco
-            proc_info = _buscar_processo_por_di(val_di)
-            if proc_info:
-                st.success(f"✅ **Processo Encontrado!** DI {val_di}.")
-                val_empresa = proc_info.get("empresa_nome", "")
-                val_cliente = proc_info.get("cliente_nome", "")
-                val_referencia = proc_info.get("referencia", "")
-                dt_bd = proc_info.get("data_registro")
-                if dt_bd:
-                    val_data = dt_bd
-            else:
-                st.warning(f"⚠️ **DI {val_di} não cadastrada**. Preencha manualmente.")
+            # --- B. Busca DI no Banco ---
+            if val_di:
+                proc_info = _buscar_processo_por_di(val_di)
+                if proc_info:
+                    st.success(f"✅ **Processo Encontrado!** DI {val_di}.")
+                    val_empresa = proc_info.get("empresa_nome", "")
+                    val_cliente = proc_info.get("cliente_nome", "")
+                    val_referencia = proc_info.get("referencia", "")
+                    dt_bd = proc_info.get("data_registro")
+                    if dt_bd:
+                        val_data = dt_bd
+                else:
+                    st.warning(f"⚠️ **DI {val_di} não cadastrada**. Preencha manualmente.")
 
-            # C. Leitura da Aba RATEIO
+            # --- C. Leitura da Aba RATEIO ---
+            uploaded_file.seek(0) # Rebobina DE NOVO para ler a outra aba
             df_bruto = pd.read_excel(uploaded_file, sheet_name="Rateio de Produtos", usecols="C, D, E, I, R, U, X, AA")
             df_bruto.columns = ["NCM", "PRODUTO", "QUANT", "VALOR TOTAL R$", "II %", "IPI %", "PIS %", "CONFINS %"]
             
-            for col in ["QUANT", "VALOR TOTAL R$", "II %", "IPI %", "PIS %", "CONFINS %"]:
+            # Converter colunas numéricas com coerce para evitar erro de string
+            cols_num = ["QUANT", "VALOR TOTAL R$", "II %", "IPI %", "PIS %", "CONFINS %"]
+            for col in cols_num:
                 df_bruto[col] = pd.to_numeric(df_bruto[col], errors="coerce").fillna(0)
             
             df_bruto = df_bruto.dropna(subset=["PRODUTO"])
             
+            # Cálculos Matemáticos
             df_calc = df_bruto.copy()
             
-            # Cálculos das colunas
-            df_calc["II %"] = df_calc["II %"]
+            # II
             df_calc["II VALOR"] = df_calc["VALOR TOTAL R$"] * (df_calc["II %"] / 100)
             
-            df_calc["IPI %"] = df_calc["IPI %"]
+            # IPI
             base_ipi = df_calc["VALOR TOTAL R$"] + df_calc["II VALOR"]
             df_calc["IPI VALOR"] = base_ipi * (df_calc["IPI %"] / 100)
             
-            df_calc["PIS %"] = df_calc["PIS %"]
+            # PIS/COFINS
             df_calc["PIS VALOR"] = df_calc["VALOR TOTAL R$"] * (df_calc["PIS %"] / 100)
-            
-            df_calc["COFINS %"] = df_calc["CONFINS %"]
             df_calc["COFINS VALOR"] = df_calc["VALOR TOTAL R$"] * (df_calc["CONFINS %"] / 100)
 
             colunas_finais = [
@@ -191,7 +211,7 @@ def render_fechamento():
                 "II %", "II VALOR",
                 "IPI %", "IPI VALOR",
                 "PIS %", "PIS VALOR",
-                "COFINS %", "COFINS VALOR"
+                "CONFINS %", "COFINS VALOR"
             ]
             st.session_state["f_df_rateio"] = df_calc[colunas_finais]
 
@@ -219,7 +239,7 @@ def render_fechamento():
     # ==========================================
     df_rateio = st.session_state.get("f_df_rateio", pd.DataFrame())
     
-    with st.expander("📦 Rateio de Produtos e Impostos Detalhados", expanded=True):
+    with st.expander("📦 Rateio de Produtos e Impostos Detalhados", expanded=False):
         if not df_rateio.empty:
             st.dataframe(
                 df_rateio, 
@@ -227,7 +247,7 @@ def render_fechamento():
                 hide_index=True,
                 column_config={
                     "PRODUTO": st.column_config.TextColumn("Produto", width="large"),
-                    "VALOR TOTAL R$": st.column_config.NumberColumn("Valor Produto", format="R$ %.2f"),
+                    "VALOR TOTAL R$": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
                     "II %": st.column_config.NumberColumn("II %", format="%.2f%%"),
                     "II VALOR": st.column_config.NumberColumn("II (R$)", format="R$ %.2f"),
                     "IPI %": st.column_config.NumberColumn("IPI %", format="%.2f%%"),
@@ -256,13 +276,12 @@ def render_fechamento():
     st.divider()
 
     # ==========================================
-    # 6. VALORES CONSOLIDADOS (FINALMENTE A SEÇÃO PEDIDA)
+    # 6. VALORES CONSOLIDADOS
     # ==========================================
     memoria = st.session_state.get("f_dados_excel", {})
     
     st.markdown("### 3. Valores Consolidados")
     
-    # Layout em 3 grandes blocos
     col_brl, col_tax, col_usd = st.columns([1.1, 1.5, 1], gap="large")
 
     # --- 1. Valores Mercadoria (R$) ---
@@ -276,26 +295,24 @@ def render_fechamento():
         st.markdown("---")
         v_cif_brl = st.number_input("VALOR CIF", value=memoria.get("cif_brl", 0.0), format="%.2f", disabled=True)
 
-    # --- 2. Impostos (Nacionalização) com % e Valor ---
+    # --- 2. Impostos Detalhados (% e Valor) ---
     with col_tax:
         st.markdown("#### 🏛️ Impostos (Nacionalização)")
         
-        # Cabeçalho da mini-tabela
         h1, h2 = st.columns([1, 1.5])
-        h1.caption("**Alíquota Calc. (%)**")
+        h1.caption("**Alíquota Efetiva (%)**")
         h2.caption("**Valor (R$)**")
 
-        # Função para gerar linha
         def row_tax(label, val, base_calc):
             c_pct, c_val = st.columns([1, 1.5])
             pct_calc = _safe_div_pct(val, base_calc)
             with c_pct:
-                st.number_input(f"% {label}", value=pct_calc, format="%.2f", disabled=True, key=f"p_{label}")
+                st.number_input(f"% {label}", value=pct_calc, format="%.2f", disabled=True, key=f"p_{label}", label_visibility="collapsed")
             with c_val:
-                st.number_input(f"{label}", value=val, format="%.2f", disabled=True, key=f"v_{label}")
+                st.number_input(f"{label}", value=val, format="%.2f", disabled=True, key=f"v_{label}", label_visibility="collapsed")
             return val
 
-        # Extraindo valores
+        # Dados
         val_ii = memoria.get("ii_brl", 0.0)
         val_ipi = memoria.get("ipi_brl", 0.0)
         val_pis = memoria.get("pis_brl", 0.0)
@@ -309,14 +326,13 @@ def render_fechamento():
         base_ipi_total = v_cif_brl + val_ii
         row_tax("IPI", val_ipi, base_ipi_total)
         
-        # Base 3: CIF (Simplificado para PIS/COFINS)
+        # Base 3: CIF (PIS/COFINS)
         row_tax("PIS", val_pis, v_cif_brl)
         row_tax("COFINS", val_cofins, v_cif_brl)
         
-        # Base 4: CIF (Visual para ICMS)
+        # Base 4: CIF (ICMS)
         row_tax("ICMS", val_icms, v_cif_brl)
 
-        # Totais
         total_impostos = val_ii + val_ipi + val_pis + val_cofins + val_icms
         st.markdown("---")
         st.metric("Total Impostos", f"R$ {total_impostos:,.2f}")
