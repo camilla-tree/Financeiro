@@ -190,6 +190,33 @@ def upsert_fechamento(data: Dict[str, Any]) -> int:
     Cria/atualiza fechamento na tabela existente (PK = id).
     Retorna id.
     """
+    # 1. Cria uma cópia segura dos dados e mapeia as nomenclaturas do Python para o Banco
+    db_payload = data.copy()
+    
+    # Previne erro de nulo nos IDs obrigatórios da tabela fechamento
+    db_payload["empresa_id"] = data.get("empresa_id") or 1 
+    db_payload["cliente_id"] = data.get("cliente_id") or 1
+    db_payload["processo_id"] = data.get("processo_id")
+    
+    # Mapeia nomes do dicionário gerado na tela para os nomes exatos das colunas SQL
+    db_payload["adicional_brl"] = data.get("adic_brl", 0)
+    db_payload["custo_aquisicao_brl"] = data.get("custo_aquisicao", 0)
+    db_payload["pis_venda_pct"] = data.get("pis_v_pct", 0)
+    db_payload["cofins_venda_pct"] = data.get("cofins_v_pct", 0)
+    db_payload["icms_venda_pct"] = data.get("icms_v_pct", 0)
+    db_payload["markup_venda_pct"] = data.get("markup_v_pct", 0)
+    db_payload["ipi_venda_pct"] = data.get("ipi_v_pct", 0)
+    
+    # Tratamento de segurança para dados ausentes (mantém retrocompatibilidade)
+    db_payload["di"] = data.get("di", "")
+    for key in ["origem", "modal", "destino"]:
+        if key not in db_payload: db_payload[key] = ""
+    for num_key in ["qtde_container", "taxa_conversao", "fob_brl", "frete_brl", 
+                    "seguro_brl", "cif_brl", "ii_brl", "ipi_brl", "pis_brl", 
+                    "cofins_brl", "icms_brl", "total_despesas_brl", "bc_normal", "total_nf_saida"]:
+        if num_key not in db_payload: db_payload[num_key] = 0.0
+
+    # 2. Se já tem ID, atualiza (UPDATE)
     if data.get("id"):
         sql = """
         update fechamento
@@ -198,35 +225,64 @@ def upsert_fechamento(data: Dict[str, Any]) -> int:
           empresa = %(empresa)s,
           cliente = %(cliente)s,
           referencia = %(referencia)s,
-          valor_fob_usd = %(valor_fob_usd)s,
-          frete_usd = %(frete_usd)s,
-          adicional_usd = %(adicional_usd)s,
-          seguro_usd = %(seguro_usd)s,
-          taxa_conversao = %(taxa_conversao)s,
+          di = %(di)s,
           origem = %(origem)s,
           modal = %(modal)s,
           destino = %(destino)s,
           qtde_container = %(qtde_container)s,
-          bl_awb = %(bl_awb)s
+          taxa_conversao = %(taxa_conversao)s,
+          fob_brl = %(fob_brl)s,
+          frete_brl = %(frete_brl)s,
+          seguro_brl = %(seguro_brl)s,
+          adicional_brl = %(adicional_brl)s,
+          cif_brl = %(cif_brl)s,
+          ii_brl = %(ii_brl)s,
+          ipi_brl = %(ipi_brl)s,
+          pis_brl = %(pis_brl)s,
+          cofins_brl = %(cofins_brl)s,
+          icms_brl = %(icms_brl)s,
+          total_despesas_brl = %(total_despesas_brl)s,
+          custo_aquisicao_brl = %(custo_aquisicao_brl)s,
+          pis_venda_pct = %(pis_venda_pct)s,
+          cofins_venda_pct = %(cofins_venda_pct)s,
+          icms_venda_pct = %(icms_venda_pct)s,
+          markup_venda_pct = %(markup_venda_pct)s,
+          ipi_venda_pct = %(ipi_venda_pct)s,
+          bc_normal = %(bc_normal)s,
+          total_nf_saida = %(total_nf_saida)s,
+          empresa_id = %(empresa_id)s,
+          cliente_id = %(cliente_id)s,
+          processo_id = %(processo_id)s
         where id = %(id)s
         returning id;
         """
-        df = fetch_df(sql, data)
+        df = fetch_df(sql, db_payload)
         return int(df.iloc[0]["id"])
 
+    # 3. Se não tem ID, cria um novo (INSERT)
     sql = """
     insert into fechamento (
-      data, empresa, cliente, referencia,
-      valor_fob_usd, frete_usd, adicional_usd, seguro_usd, taxa_conversao,
-      origem, modal, destino, qtde_container, bl_awb
+      data, empresa, cliente, referencia, di,
+      origem, modal, destino, qtde_container, taxa_conversao,
+      fob_brl, frete_brl, seguro_brl, adicional_brl, cif_brl,
+      ii_brl, ipi_brl, pis_brl, cofins_brl, icms_brl,
+      total_despesas_brl, custo_aquisicao_brl,
+      pis_venda_pct, cofins_venda_pct, icms_venda_pct, markup_venda_pct, ipi_venda_pct,
+      bc_normal, total_nf_saida,
+      empresa_id, cliente_id, processo_id
     ) values (
-      %(data)s, %(empresa)s, %(cliente)s, %(referencia)s,
-      %(valor_fob_usd)s, %(frete_usd)s, %(adicional_usd)s, %(seguro_usd)s, %(taxa_conversao)s,
-      %(origem)s, %(modal)s, %(destino)s, %(qtde_container)s, %(bl_awb)s
+      %(data)s, %(empresa)s, %(cliente)s, %(referencia)s, %(di)s,
+      %(origem)s, %(modal)s, %(destino)s, %(qtde_container)s, %(taxa_conversao)s,
+      %(fob_brl)s, %(frete_brl)s, %(seguro_brl)s, %(adicional_brl)s, %(cif_brl)s,
+      %(ii_brl)s, %(ipi_brl)s, %(pis_brl)s, %(cofins_brl)s, %(icms_brl)s,
+      %(total_despesas_brl)s, %(custo_aquisicao_brl)s,
+      %(pis_venda_pct)s, %(cofins_venda_pct)s, %(icms_venda_pct)s, %(markup_venda_pct)s, %(ipi_venda_pct)s,
+      %(bc_normal)s, %(total_nf_saida)s,
+      %(empresa_id)s, %(cliente_id)s, %(processo_id)s
     )
     returning id;
     """
-    df = fetch_df(sql, data)
+    df = fetch_df(sql, db_payload)
     return int(df.iloc[0]["id"])
 
 
