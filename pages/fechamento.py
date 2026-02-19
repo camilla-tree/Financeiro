@@ -13,7 +13,7 @@ from db import (
     upsert_fechamento,
     get_despesas,
     replace_despesas,
-    fetch_df_cached, # <- NOVO: Importamos para fazer a busca da DI
+    fetch_df_cached, 
 )
 
 DESPESAS_TEMPLATE = [
@@ -130,16 +130,28 @@ def render_fechamento():
                 df_bruto[col] = pd.to_numeric(df_bruto[col], errors="coerce").fillna(0)
             df_bruto = df_bruto.dropna(subset=["PRODUTO"])
                 
+            # 4. Cálculos Matemáticos de Nacionalização
             df_calc = df_bruto.copy()
-            df_calc["II NACIONALIZACAO %"] = df_calc["II %"] / 100
-            df_calc["II NACIONALIZACAO VALOR"] = df_calc["VALOR TOTAL R$"] * df_calc["II NACIONALIZACAO %"]
-            df_calc["IPI NACIONALIZACAO %"] = df_calc["IPI %"] / 100
-            df_calc["IPI NACIONALIZACAO VALOR"] = (df_calc["VALOR TOTAL R$"] + df_calc["II NACIONALIZACAO VALOR"]) * df_calc["IPI NACIONALIZACAO %"]
-            df_calc["PIS NACIONALIZACAO %"] = df_calc["PIS %"] / 100
-            df_calc["PIS NACIONALIZACAO VALOR"] = df_calc["VALOR TOTAL R$"] * df_calc["PIS NACIONALIZACAO %"]
-            df_calc["CONFINS NACIONALIZACAO %"] = df_calc["CONFINS %"] / 100
-            df_calc["CONFINS NACIONALIZACAO VALOR"] = df_calc["VALOR TOTAL R$"] * df_calc["CONFINS NACIONALIZACAO %"]
             
+            # II
+            # Mantemos o visual em % (ex: 18.0) e dividimos por 100 só na conta
+            df_calc["II NACIONALIZACAO %"] = df_calc["II %"] 
+            df_calc["II NACIONALIZACAO VALOR"] = df_calc["VALOR TOTAL R$"] * (df_calc["II %"] / 100)
+            
+            # IPI (Base = Valor Total + II)
+            df_calc["IPI NACIONALIZACAO %"] = df_calc["IPI %"]
+            base_ipi = df_calc["VALOR TOTAL R$"] + df_calc["II NACIONALIZACAO VALOR"]
+            df_calc["IPI NACIONALIZACAO VALOR"] = base_ipi * (df_calc["IPI %"] / 100)
+            
+            # PIS
+            df_calc["PIS NACIONALIZACAO %"] = df_calc["PIS %"]
+            df_calc["PIS NACIONALIZACAO VALOR"] = df_calc["VALOR TOTAL R$"] * (df_calc["PIS %"] / 100)
+            
+            # COFINS
+            df_calc["CONFINS NACIONALIZACAO %"] = df_calc["CONFINS %"]
+            df_calc["CONFINS NACIONALIZACAO VALOR"] = df_calc["VALOR TOTAL R$"] * (df_calc["CONFINS %"] / 100)
+            
+            # 5. Organizar as colunas 
             colunas_finais = [
                 "PRODUTO", "NCM", "QUANT", "VALOR TOTAL R$",
                 "II NACIONALIZACAO %", "II NACIONALIZACAO VALOR",
@@ -150,7 +162,22 @@ def render_fechamento():
             df_final = df_calc[colunas_finais]
 
             with st.expander("👁️ Visualizar Rateio de Produtos Calculado", expanded=True):
-                st.dataframe(df_final, use_container_width=True, hide_index=True)
+                st.dataframe(
+                    df_final, 
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "VALOR TOTAL R$": st.column_config.NumberColumn(format="R$ %.2f"),
+                        "II NACIONALIZACAO %": st.column_config.NumberColumn(format="%.2f %%"),
+                        "II NACIONALIZACAO VALOR": st.column_config.NumberColumn(format="R$ %.2f"),
+                        "IPI NACIONALIZACAO %": st.column_config.NumberColumn(format="%.2f %%"),
+                        "IPI NACIONALIZACAO VALOR": st.column_config.NumberColumn(format="R$ %.2f"),
+                        "PIS NACIONALIZACAO %": st.column_config.NumberColumn(format="%.2f %%"),
+                        "PIS NACIONALIZACAO VALOR": st.column_config.NumberColumn(format="R$ %.2f"),
+                        "CONFINS NACIONALIZACAO %": st.column_config.NumberColumn(format="%.2f %%"),
+                        "CONFINS NACIONALIZACAO VALOR": st.column_config.NumberColumn(format="R$ %.2f"),
+                    }
+                )
                 
         except Exception as e:
             st.error(f"Erro ao ler a planilha: {e}")
