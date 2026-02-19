@@ -278,20 +278,59 @@ def render_fechamento():
         
         v_cif_brl = st.number_input("VALOR CIF TOTAL (Excel)", value=memoria.get("cif_brl", 0.0), format="%.2f", disabled=True)
 
+    # --- COLUNA 2: IMPOSTOS (Com % Calculado) ---
     with col_tax:
-        st.markdown("#### 🏛️ Totais de Impostos (Nacionalização)")
+        st.markdown("#### 🏛️ Totais de Impostos")
         
-        t_ii = st.number_input("Total II", value=memoria.get("ii_brl", 0.0), format="%.2f", disabled=True)
-        t_ipi = st.number_input("Total IPI", value=memoria.get("ipi_brl", 0.0), format="%.2f", disabled=True)
-        t_pis = st.number_input("Total PIS", value=memoria.get("pis_brl", 0.0), format="%.2f", disabled=True)
-        t_cofins = st.number_input("Total COFINS", value=memoria.get("cofins_brl", 0.0), format="%.2f", disabled=True)
-        t_icms = st.number_input("Total ICMS (Diferido)", value=memoria.get("icms_brl", 0.0), format="%.2f", disabled=True)
+        # Recupera os valores da memória (igual antes)
+        t_ii = memoria.get("ii_brl", 0.0)
+        t_ipi = memoria.get("ipi_brl", 0.0)
+        t_pis = memoria.get("pis_brl", 0.0)
+        t_cofins = memoria.get("cofins_brl", 0.0)
+        t_icms = memoria.get("icms_brl", 0.0)
+
+        # Pequena função auxiliar interna para calcular % sem divisão por zero
+        def _calc_pct(val, base):
+            return (val / base * 100) if base > 0 else 0.0
+
+        # Cria colunas para cabeçalho
+        h1, h2 = st.columns([0.8, 1.2])
+        h1.caption("**% Calc.**")
+        h2.caption("**Valor (R$)**")
+
+        # --- II (Base = CIF) ---
+        c1, c2 = st.columns([0.8, 1.2])
+        c1.text_input("II%", value=f"{_calc_pct(t_ii, v_cif_brl):.2f}%", disabled=True, label_visibility="collapsed")
+        c2.number_input("II", value=t_ii, format="%.2f", disabled=True, label_visibility="collapsed")
+
+        # --- IPI (Base = CIF + II) ---
+        c1, c2 = st.columns([0.8, 1.2])
+        base_ipi = v_cif_brl + t_ii
+        c1.text_input("IPI%", value=f"{_calc_pct(t_ipi, base_ipi):.2f}%", disabled=True, label_visibility="collapsed")
+        c2.number_input("IPI", value=t_ipi, format="%.2f", disabled=True, label_visibility="collapsed")
+
+        # --- PIS (Base = CIF) ---
+        c1, c2 = st.columns([0.8, 1.2])
+        c1.text_input("PIS%", value=f"{_calc_pct(t_pis, v_cif_brl):.2f}%", disabled=True, label_visibility="collapsed")
+        c2.number_input("PIS", value=t_pis, format="%.2f", disabled=True, label_visibility="collapsed")
+
+        # --- COFINS (Base = CIF) ---
+        c1, c2 = st.columns([0.8, 1.2])
+        c1.text_input("COF%", value=f"{_calc_pct(t_cofins, v_cif_brl):.2f}%", disabled=True, label_visibility="collapsed")
+        c2.number_input("COF", value=t_cofins, format="%.2f", disabled=True, label_visibility="collapsed")
+
+        # --- ICMS (Base = CIF - apenas referência visual) ---
+        c1, c2 = st.columns([0.8, 1.2])
+        c1.text_input("ICMS%", value=f"{_calc_pct(t_icms, v_cif_brl):.2f}%", disabled=True, label_visibility="collapsed")
+        c2.number_input("ICMS", value=t_icms, format="%.2f", disabled=True, label_visibility="collapsed")
         
+        # Totais finais
         total_impostos = t_ii + t_ipi + t_pis + t_cofins + t_icms
-        st.markdown(f"**Total Impostos:** :red[R$ {total_impostos:,.2f}]")
+        st.markdown("---")
+        st.metric("Total Impostos", f"R$ {total_impostos:,.2f}")
         
         total_geral_brl = v_cif_brl + total_impostos
-        st.metric("Custo Total (CIF + Impostos)", f"R$ {total_geral_brl:,.2f}")
+        st.metric("TOTAL (CIF + Impostos)", f"R$ {total_geral_brl:,.2f}", delta="Custo Total")
 
     with col_usd:
         st.markdown("#### 🇺🇸 Conversão (USD)")
