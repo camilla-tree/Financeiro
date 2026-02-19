@@ -17,10 +17,9 @@ from db import (
 )
 
 # ==========================================
-# 1. CONFIGURAÇÕES E TEMPLATES (Atualizado)
+# 1. CONFIGURAÇÕES E TEMPLATES
 # ==========================================
 
-# Tupla: (Descrição, É Estimado?)
 DESPESAS_TEMPLATE = [
     ("Taxa de Liberação de BL/AWB", True),
     ("Armazenagem PORTO", True),
@@ -61,13 +60,8 @@ def _safe_div_pct(numerador: float, denominador: float) -> float:
     return (numerador / denominador) * 100
 
 def _ensure_despesas_template(existing: pd.DataFrame) -> pd.DataFrame:
-    """Garante que o DataFrame tenha todas as linhas do template."""
     if existing is not None and not existing.empty:
-        # Aqui poderia ter lógica de merge se quiser manter valores salvos
-        # Por enquanto, retornamos o existente se houver (para edição)
-        # Se for vazio, cria do zero
         return existing
-        
     rows = []
     for i, (desc, estimado) in enumerate(DESPESAS_TEMPLATE, start=1):
         rows.append({"ordem": i, "descricao": desc, "valor_brl": 0.0, "estimado": estimado})
@@ -308,7 +302,6 @@ def render_fechamento():
         st.markdown("---")
         st.metric("Total Impostos", f"R$ {total_impostos:,.2f}")
         
-        # Variável importante para o próximo passo
         total_geral_brl = v_cif_brl + total_impostos
         st.metric("TOTAL (CIF + Impostos)", f"R$ {total_geral_brl:,.2f}", delta="Custo Total")
 
@@ -334,7 +327,6 @@ def render_fechamento():
     col_desp1, col_desp2 = st.columns([2, 1], gap="large")
 
     with col_desp1:
-        # Carrega o template padrão
         df_desp = _ensure_despesas_template(pd.DataFrame())
         
         edited_desp = st.data_editor(
@@ -353,13 +345,12 @@ def render_fechamento():
     with col_desp2:
         st.info("Preencha os valores ao lado.")
         
-        # Soma do Dataframe Editável
-        soma_despesas = sum(_to_decimal(r.get("valor_brl")) for _, r in edited_desp.iterrows())
+        # Correção aqui: Converte Decimal para float antes de somar
+        soma_despesas = sum(float(_to_decimal(r.get("valor_brl"))) for _, r in edited_desp.iterrows())
         
         st.markdown("---")
         st.metric("Total Despesas Nacionalização", f"R$ {soma_despesas:,.2f}")
         
-        # Total Final (CIF + Impostos + Despesas)
         desembolso_final = total_geral_brl + soma_despesas
         
         st.divider()
