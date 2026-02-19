@@ -250,12 +250,12 @@ def render_fechamento():
         v_fob_brl = st.number_input("F.O.B.", value=memoria.get("fob_brl", 0.0), format="%.2f")
         v_frete_brl = st.number_input("Frete Intl.", value=memoria.get("frete_brl", 0.0), format="%.2f")
         v_seguro_brl = st.number_input("Seguro", value=memoria.get("seguro_brl", 0.0), format="%.2f")
-        v_adic_brl = st.number_input("Adicional", value=0.0, format="%.2f")
+        v_adic_brl = st.number_input("Adicional (Manual)", value=0.0, format="%.2f")
         
         st.markdown("---")
         v_cif_brl = st.number_input("VALOR CIF", value=memoria.get("cif_brl", 0.0), format="%.2f", disabled=True)
 
-    # --- 2. Impostos ---
+    # --- 2. Impostos (Com Nomes Visíveis) ---
     with col_tax:
         st.markdown("#### 🏛️ Totais de Impostos")
         
@@ -268,35 +268,24 @@ def render_fechamento():
         def _calc_pct(val, base):
             return (val / base * 100) if base > 0 else 0.0
 
-        h1, h2 = st.columns([0.8, 1.2])
-        h1.caption("**% Calc.**")
-        h2.caption("**Valor (R$)**")
+        # Cabeçalho
+        h1, h2, h3 = st.columns([0.6, 0.8, 1.2])
+        h1.caption("") # Nome
+        h2.caption("**% Calc.**")
+        h3.caption("**Valor (R$)**")
 
-        # II
-        c1, c2 = st.columns([0.8, 1.2])
-        c1.text_input("II%", value=f"{_calc_pct(t_ii, v_cif_brl):.2f}%", disabled=True, label_visibility="collapsed")
-        c2.number_input("II", value=t_ii, format="%.2f", disabled=True, label_visibility="collapsed")
+        # Função Linha
+        def tax_row(name, val, base):
+            c1, c2, c3 = st.columns([0.6, 0.8, 1.2])
+            c1.markdown(f"**{name}**") # Nome Fixo e Visível
+            c2.text_input(f"p_{name}", value=f"{_calc_pct(val, base):.2f}%", disabled=True, label_visibility="collapsed")
+            c3.number_input(f"v_{name}", value=val, format="%.2f", disabled=True, label_visibility="collapsed")
 
-        # IPI (Base = CIF + II)
-        c1, c2 = st.columns([0.8, 1.2])
-        base_ipi_total = v_cif_brl + t_ii
-        c1.text_input("IPI%", value=f"{_calc_pct(t_ipi, base_ipi_total):.2f}%", disabled=True, label_visibility="collapsed")
-        c2.number_input("IPI", value=t_ipi, format="%.2f", disabled=True, label_visibility="collapsed")
-
-        # PIS
-        c1, c2 = st.columns([0.8, 1.2])
-        c1.text_input("PIS%", value=f"{_calc_pct(t_pis, v_cif_brl):.2f}%", disabled=True, label_visibility="collapsed")
-        c2.number_input("PIS", value=t_pis, format="%.2f", disabled=True, label_visibility="collapsed")
-
-        # COFINS
-        c1, c2 = st.columns([0.8, 1.2])
-        c1.text_input("COF%", value=f"{_calc_pct(t_cofins, v_cif_brl):.2f}%", disabled=True, label_visibility="collapsed")
-        c2.number_input("COF", value=t_cofins, format="%.2f", disabled=True, label_visibility="collapsed")
-
-        # ICMS
-        c1, c2 = st.columns([0.8, 1.2])
-        c1.text_input("ICMS%", value=f"{_calc_pct(t_icms, v_cif_brl):.2f}%", disabled=True, label_visibility="collapsed")
-        c2.number_input("ICMS", value=t_icms, format="%.2f", disabled=True, label_visibility="collapsed")
+        tax_row("II", t_ii, v_cif_brl)
+        tax_row("IPI", t_ipi, v_cif_brl + t_ii)
+        tax_row("PIS", t_pis, v_cif_brl)
+        tax_row("COFINS", t_cofins, v_cif_brl)
+        tax_row("ICMS", t_icms, v_cif_brl)
         
         total_impostos = t_ii + t_ipi + t_pis + t_cofins + t_icms
         st.markdown("---")
@@ -320,7 +309,7 @@ def render_fechamento():
     st.divider()
 
     # ==========================================
-    # 7. DESPESAS GERAIS (NOVA SEÇÃO)
+    # 7. DESPESAS GERAIS E FECHAMENTO FINAL
     # ==========================================
     st.markdown("### 4. Despesas Gerais")
     
@@ -345,20 +334,30 @@ def render_fechamento():
     with col_desp2:
         st.info("Preencha os valores ao lado.")
         
-        # Correção aqui: Converte Decimal para float antes de somar
+        # Soma despesas convertendo para float
         soma_despesas = sum(float(_to_decimal(r.get("valor_brl"))) for _, r in edited_desp.iterrows())
         
         st.markdown("---")
-        st.metric("Total Despesas Nacionalização", f"R$ {soma_despesas:,.2f}")
+        st.metric("Total Despesas Nac.", f"R$ {soma_despesas:,.2f}")
         
+        # 1. Desembolso Total
         desembolso_final = total_geral_brl + soma_despesas
-        
+        st.metric("DESEMBOLSO TOTAL", f"R$ {desembolso_final:,.2f}", delta="Custo Final")
+
         st.divider()
+
+        # 2. Custo de Aquisição (Antes do Fator)
+        # Fórmula: Desembolso - (IPI + PIS + COFINS + ICMS) + Adicional
+        impostos_recuperaveis = t_ipi + t_pis + t_cofins + t_icms
+        custo_aquisicao = desembolso_final - impostos_recuperaveis + v_adic_brl
+        
+        st.markdown("##### Custo de Aquisição")
+        st.caption("(Desembolso - Impostos Recup. + Adicional)")
         st.metric(
-            label="DESEMBOLSO TOTAL NA NACIONALIZAÇÃO", 
-            value=f"R$ {desembolso_final:,.2f}", 
-            delta="Final",
-            delta_color="inverse"
+            label="VALOR FINAL",
+            value=f"R$ {custo_aquisicao:,.2f}",
+            delta="Antes do Fator",
+            delta_color="off" # Cinza neutro
         )
 
     st.write("")
