@@ -454,7 +454,7 @@ def render_fechamento():
             }
             
             # Chama a função antiga de Upsert (É importante que você atualize o SQL dela no db.py depois)
-            upsert_fechamento(payload)
+            # upsert_fechamento(payload)
             
             # --- 2. Geração do PDF ---
             pdf_b = _gerar_pdf(payload, edited_desp)
