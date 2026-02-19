@@ -72,7 +72,6 @@ def _buscar_processo_por_di(di_str: str) -> dict | None:
     """
     df = fetch_df_cached(sql, (di_str,))
     if not df.empty:
-        # Garante que a data venha como objeto date
         dados = df.iloc[0].to_dict()
         if isinstance(dados.get("data_registro"), str):
             dados["data_registro"] = pd.to_datetime(dados["data_registro"]).date()
@@ -85,6 +84,11 @@ def _extract_cell(df: pd.DataFrame, row_idx: int, col_idx: int) -> float:
         return _to_float(val)
     except IndexError:
         return 0.0
+
+def _safe_div_pct(numerador: float, denominador: float) -> float:
+    if denominador == 0:
+        return 0.0
+    return (numerador / denominador) * 100
 
 # ==========================================
 # RENDERIZAÇÃO DA TELA
@@ -126,7 +130,7 @@ def render_fechamento():
     # ==========================================
     if uploaded_file is not None:
         try:
-            # A. Leitura da Aba RESUMO (Valores Totais e DI)
+            # A. Leitura da Aba RESUMO
             df_resumo = pd.read_excel(uploaded_file, sheet_name="Resumo", header=None)
             val_di = str(df_resumo.iloc[5, 0]).strip()
             
@@ -144,7 +148,7 @@ def render_fechamento():
             }
             st.session_state["f_dados_excel"] = dados_lidos
 
-            # B. Busca DI no Banco (Identificação)
+            # B. Busca DI no Banco
             proc_info = _buscar_processo_por_di(val_di)
             if proc_info:
                 st.success(f"✅ **Processo Encontrado!** DI {val_di}.")
@@ -157,7 +161,7 @@ def render_fechamento():
             else:
                 st.warning(f"⚠️ **DI {val_di} não cadastrada**. Preencha manualmente.")
 
-            # C. Leitura da Aba RATEIO (Produtos e Impostos Detalhados)
+            # C. Leitura da Aba RATEIO
             df_bruto = pd.read_excel(uploaded_file, sheet_name="Rateio de Produtos", usecols="C, D, E, I, R, U, X, AA")
             df_bruto.columns = ["NCM", "PRODUTO", "QUANT", "VALOR TOTAL R$", "II %", "IPI %", "PIS %", "CONFINS %"]
             
@@ -166,19 +170,16 @@ def render_fechamento():
             
             df_bruto = df_bruto.dropna(subset=["PRODUTO"])
             
-            # Cálculos Matemáticos (Mantendo % visual e calculando valor)
             df_calc = df_bruto.copy()
             
-            # II
+            # Cálculos das colunas
             df_calc["II %"] = df_calc["II %"]
             df_calc["II VALOR"] = df_calc["VALOR TOTAL R$"] * (df_calc["II %"] / 100)
             
-            # IPI (Base = Valor + II)
             df_calc["IPI %"] = df_calc["IPI %"]
             base_ipi = df_calc["VALOR TOTAL R$"] + df_calc["II VALOR"]
             df_calc["IPI VALOR"] = base_ipi * (df_calc["IPI %"] / 100)
             
-            # PIS e COFINS
             df_calc["PIS %"] = df_calc["PIS %"]
             df_calc["PIS VALOR"] = df_calc["VALOR TOTAL R$"] * (df_calc["PIS %"] / 100)
             
@@ -198,11 +199,9 @@ def render_fechamento():
             st.error(f"Erro ao processar planilha: {e}")
 
     # ==========================================
-    # 3. IDENTIFICAÇÃO (Com Data)
+    # 3. IDENTIFICAÇÃO
     # ==========================================
     st.markdown("### 1. Identificação")
-    
-    # Layout ajustado com Data
     c1, c2, c3, c4, c5 = st.columns([1.5, 1.2, 1, 1.5, 1.5])
     with c1: st.text_input("DI", value=val_di, disabled=True)
     with c2: st.text_input("Referência", value=val_referencia)
@@ -216,11 +215,10 @@ def render_fechamento():
     st.divider()
 
     # ==========================================
-    # 4. TABELA DE RATEIO E IMPOSTOS (Visível)
+    # 4. TABELA DE RATEIO
     # ==========================================
     df_rateio = st.session_state.get("f_df_rateio", pd.DataFrame())
     
-    # Agora expandido por padrão (expanded=True)
     with st.expander("📦 Rateio de Produtos e Impostos Detalhados", expanded=True):
         if not df_rateio.empty:
             st.dataframe(
@@ -230,28 +228,23 @@ def render_fechamento():
                 column_config={
                     "PRODUTO": st.column_config.TextColumn("Produto", width="large"),
                     "VALOR TOTAL R$": st.column_config.NumberColumn("Valor Produto", format="R$ %.2f"),
-                    
-                    # Colunas de Impostos: % e Valor lado a lado
                     "II %": st.column_config.NumberColumn("II %", format="%.2f%%"),
                     "II VALOR": st.column_config.NumberColumn("II (R$)", format="R$ %.2f"),
-                    
                     "IPI %": st.column_config.NumberColumn("IPI %", format="%.2f%%"),
                     "IPI VALOR": st.column_config.NumberColumn("IPI (R$)", format="R$ %.2f"),
-                    
                     "PIS %": st.column_config.NumberColumn("PIS %", format="%.2f%%"),
                     "PIS VALOR": st.column_config.NumberColumn("PIS (R$)", format="R$ %.2f"),
-                    
                     "COFINS %": st.column_config.NumberColumn("COFINS %", format="%.2f%%"),
                     "COFINS VALOR": st.column_config.NumberColumn("COFINS (R$)", format="R$ %.2f"),
                 }
             )
         else:
-            st.info("Aguardando importação do Excel para exibir os produtos.")
+            st.info("Aguardando importação do Excel.")
 
     st.divider()
 
     # ==========================================
-    # 5. LOGÍSTICA DE IMPORTAÇÃO
+    # 5. LOGÍSTICA
     # ==========================================
     st.markdown("### 2. Logística de Entrada")
     l1, l2, l3, l4 = st.columns(4)
@@ -263,37 +256,75 @@ def render_fechamento():
     st.divider()
 
     # ==========================================
-    # 6. VALORES TOTAIS (Resumo)
+    # 6. VALORES CONSOLIDADOS (FINALMENTE A SEÇÃO PEDIDA)
     # ==========================================
     memoria = st.session_state.get("f_dados_excel", {})
     
     st.markdown("### 3. Valores Consolidados")
-    col_brl, col_tax, col_usd = st.columns([1.2, 1.2, 1], gap="large")
+    
+    # Layout em 3 grandes blocos
+    col_brl, col_tax, col_usd = st.columns([1.1, 1.5, 1], gap="large")
 
+    # --- 1. Valores Mercadoria (R$) ---
     with col_brl:
-        st.markdown("#### 🇧🇷 Valores da Mercadoria")
-        v_fob_brl = st.number_input("Valor F.O.B. (R$)", value=memoria.get("fob_brl", 0.0), format="%.2f")
-        v_frete_brl = st.number_input("Frete Intl. (R$)", value=memoria.get("frete_brl", 0.0), format="%.2f")
-        v_seguro_brl = st.number_input("Seguro (R$)", value=memoria.get("seguro_brl", 0.0), format="%.2f")
-        v_adic_brl = st.number_input("Adicional / Despesas Extras (R$)", value=0.0, format="%.2f")
+        st.markdown("#### 🇧🇷 Mercadoria (R$)")
+        v_fob_brl = st.number_input("F.O.B.", value=memoria.get("fob_brl", 0.0), format="%.2f")
+        v_frete_brl = st.number_input("Frete Intl.", value=memoria.get("frete_brl", 0.0), format="%.2f")
+        v_seguro_brl = st.number_input("Seguro", value=memoria.get("seguro_brl", 0.0), format="%.2f")
+        v_adic_brl = st.number_input("Adicional", value=0.0, format="%.2f")
         
-        v_cif_brl = st.number_input("VALOR CIF TOTAL (Excel)", value=memoria.get("cif_brl", 0.0), format="%.2f", disabled=True)
+        st.markdown("---")
+        v_cif_brl = st.number_input("VALOR CIF", value=memoria.get("cif_brl", 0.0), format="%.2f", disabled=True)
 
+    # --- 2. Impostos (Nacionalização) com % e Valor ---
     with col_tax:
-        st.markdown("#### 🏛️ Totais de Impostos (Nacionalização)")
+        st.markdown("#### 🏛️ Impostos (Nacionalização)")
         
-        t_ii = st.number_input("Total II", value=memoria.get("ii_brl", 0.0), format="%.2f", disabled=True)
-        t_ipi = st.number_input("Total IPI", value=memoria.get("ipi_brl", 0.0), format="%.2f", disabled=True)
-        t_pis = st.number_input("Total PIS", value=memoria.get("pis_brl", 0.0), format="%.2f", disabled=True)
-        t_cofins = st.number_input("Total COFINS", value=memoria.get("cofins_brl", 0.0), format="%.2f", disabled=True)
-        t_icms = st.number_input("Total ICMS (Diferido)", value=memoria.get("icms_brl", 0.0), format="%.2f", disabled=True)
+        # Cabeçalho da mini-tabela
+        h1, h2 = st.columns([1, 1.5])
+        h1.caption("**Alíquota Calc. (%)**")
+        h2.caption("**Valor (R$)**")
+
+        # Função para gerar linha
+        def row_tax(label, val, base_calc):
+            c_pct, c_val = st.columns([1, 1.5])
+            pct_calc = _safe_div_pct(val, base_calc)
+            with c_pct:
+                st.number_input(f"% {label}", value=pct_calc, format="%.2f", disabled=True, key=f"p_{label}")
+            with c_val:
+                st.number_input(f"{label}", value=val, format="%.2f", disabled=True, key=f"v_{label}")
+            return val
+
+        # Extraindo valores
+        val_ii = memoria.get("ii_brl", 0.0)
+        val_ipi = memoria.get("ipi_brl", 0.0)
+        val_pis = memoria.get("pis_brl", 0.0)
+        val_cofins = memoria.get("cofins_brl", 0.0)
+        val_icms = memoria.get("icms_brl", 0.0)
+
+        # Base 1: CIF
+        row_tax("II", val_ii, v_cif_brl)
         
-        total_impostos = t_ii + t_ipi + t_pis + t_cofins + t_icms
-        st.markdown(f"**Total Impostos:** :red[R$ {total_impostos:,.2f}]")
+        # Base 2: CIF + II (Para IPI)
+        base_ipi_total = v_cif_brl + val_ii
+        row_tax("IPI", val_ipi, base_ipi_total)
+        
+        # Base 3: CIF (Simplificado para PIS/COFINS)
+        row_tax("PIS", val_pis, v_cif_brl)
+        row_tax("COFINS", val_cofins, v_cif_brl)
+        
+        # Base 4: CIF (Visual para ICMS)
+        row_tax("ICMS", val_icms, v_cif_brl)
+
+        # Totais
+        total_impostos = val_ii + val_ipi + val_pis + val_cofins + val_icms
+        st.markdown("---")
+        st.metric("Total Impostos", f"R$ {total_impostos:,.2f}")
         
         total_geral_brl = v_cif_brl + total_impostos
         st.metric("Custo Total (CIF + Impostos)", f"R$ {total_geral_brl:,.2f}")
 
+    # --- 3. Conversão Dólar ---
     with col_usd:
         st.markdown("#### 🇺🇸 Conversão (USD)")
         taxa = st.number_input("Taxa de Conversão", min_value=0.0, value=1.0, step=0.0001, format="%.4f")
