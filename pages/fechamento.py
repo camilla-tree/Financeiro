@@ -107,13 +107,19 @@ def render_fechamento():
         st.session_state["f_df_rateio"] = pd.DataFrame()
 
     # ==========================================
-    # 1. ÁREA DE IMPORTAÇÃO
+    # 1. ÁREA DE IMPORTAÇÃO (COM BOTÃO DE LIMPAR)
     # ==========================================
     col_import, col_search = st.columns([1, 1], gap="large")
 
     with col_import:
         st.markdown("#### 📥 Importar Excel")
         uploaded_file = st.file_uploader("Selecione a planilha (Rateio/Resumo)", type=["xlsx", "xls"])
+        
+        # --- NOVO: Botão para limpar a memória ---
+        if st.button("🧹 Limpar Dados / Nova Importação", use_container_width=True):
+            st.session_state.pop("f_dados_excel", None)
+            st.session_state.pop("f_df_rateio", None)
+            st.rerun()
 
     with col_search:
         st.markdown("#### 🔍 Histórico")
@@ -255,7 +261,7 @@ def render_fechamento():
         st.markdown("---")
         v_cif_brl = st.number_input("VALOR CIF", value=memoria.get("cif_brl", 0.0), format="%.2f", disabled=True)
 
-    # --- 2. Impostos (Com Nomes Visíveis) ---
+    # --- 2. Impostos ---
     with col_tax:
         st.markdown("#### 🏛️ Totais de Impostos")
         
@@ -268,16 +274,14 @@ def render_fechamento():
         def _calc_pct(val, base):
             return (val / base * 100) if base > 0 else 0.0
 
-        # Cabeçalho
         h1, h2, h3 = st.columns([0.6, 0.8, 1.2])
-        h1.caption("") # Nome
+        h1.caption("") 
         h2.caption("**% Calc.**")
         h3.caption("**Valor (R$)**")
 
-        # Função Linha
         def tax_row(name, val, base):
             c1, c2, c3 = st.columns([0.6, 0.8, 1.2])
-            c1.markdown(f"**{name}**") # Nome Fixo e Visível
+            c1.markdown(f"**{name}**") 
             c2.text_input(f"p_{name}", value=f"{_calc_pct(val, base):.2f}%", disabled=True, label_visibility="collapsed")
             c3.number_input(f"v_{name}", value=val, format="%.2f", disabled=True, label_visibility="collapsed")
 
@@ -334,7 +338,7 @@ def render_fechamento():
     with col_desp2:
         st.info("Preencha os valores ao lado.")
         
-        # Soma despesas convertendo para float
+        # SOMA DE DESPESAS (Corrigida conversão para float)
         soma_despesas = sum(float(_to_decimal(r.get("valor_brl"))) for _, r in edited_desp.iterrows())
         
         st.markdown("---")
@@ -357,7 +361,7 @@ def render_fechamento():
             label="VALOR FINAL",
             value=f"R$ {custo_aquisicao:,.2f}",
             delta="Antes do Fator",
-            delta_color="off" # Cinza neutro
+            delta_color="off"
         )
 
     st.write("")
