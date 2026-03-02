@@ -580,6 +580,7 @@ def render_conciliacao():
         "Categoria": df_mov["categoria_id"].apply(_cat_label),
         "Cliente": df_mov["cliente_nome"].fillna("-"),
         "Conciliado": is_conciliado_series.astype(bool),
+        "Pgto_Cliente": False,
     })
 
     edited = st.data_editor(
@@ -596,8 +597,9 @@ def render_conciliacao():
             "Valor Rateio": st.column_config.NumberColumn("Valor Rateio", disabled=True, format="R$ %.2f"),
             "Processo": st.column_config.TextColumn("Processo", disabled=True),
             "Categoria": st.column_config.SelectboxColumn("Categoria", options=cat_labels),
-            "Cliente": st.column_config.TextColumn("Cliente", disabled=True),
+            "Cliente": st.column_config.SelectboxColumn("Cliente", options=["-"] + clientes),
             "Conciliado": st.column_config.CheckboxColumn("Conciliado"),
+            "Pgto_Cliente": st.column_config.CheckboxColumn("Pgto_Cliente"),
         },
         key="conc_editor",
     )
