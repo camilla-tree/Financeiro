@@ -9,33 +9,36 @@ Este projeto foi construído com **Streamlit + PostgreSQL (Supabase)**, prioriza
 ## ✨ Funcionalidades Atuais (Fase 1)
 
 ### 📥 Importação de Extrato Bancário
-- Upload de extratos em PDF
-- Parsers específicos por banco
+- Upload de extratos em PDF ou CSV
+- Parsers específicos por banco (Nubank via CSV, Inter PDF/CSV, demais via PDF)
 - Pré-visualização antes da gravação
 - Identificação de duplicidade por hash do arquivo
+- Identificação de duplicidade por hash do arquivo
 
-### 🔗 Conciliação Manual
+### 🔗 Conciliação Manual e Rateio Dinâmico
 - Associação de movimentos bancários a:
-  - Processo
+  - Processo (suporte a rateio N:N para múltiplos processos)
   - Cliente
-  - Categoria
+  - Categoria Financeira
   - Tipo (Entrada / Saída)
-- Marcação de conciliação manual
+- Rateio Dinâmico: Divisão de um único movimento bancário em diversas categorias e processos.
+- Marcação de conciliação manual com proteção transacional.
 - Persistência com auditoria:
   - usuário
   - data/hora
 - Salvamento seguro com commit explícito
 
-### 📊 Relatório de Cliente (Exportação)
+### 📊 Relatório de Cliente e Licitação (Exportação)
 - Geração de relatório por:
   - Cliente
   - Empresa
-  - Mês
+  - Período (Mês associado)
 - Cálculo automático de:
   - Saldo anterior
   - Total de entradas
   - Total de saídas
-- Exportação em **PDF**
+- Emissão de Relatório Específico de Licitação filtrado por categoria.
+- Exportação estruturada em **PDF** usando ReportLab
 - Tabela com:
   - Banco
   - Data
@@ -64,10 +67,11 @@ Este projeto foi construído com **Streamlit + PostgreSQL (Supabase)**, prioriza
 ## 🚧 Funcionalidades em Desenvolvimento
 
 ### 📦 Fechamento Financeiro
-- Tela disponível em **modo demonstração**
-- Interface funcional para apresentação
-- **Sem leitura/gravação em banco**
-- Feature preparada para ativação futura
+- Funcionalidade ativa com **leitura e gravação no banco de dados Postgres**.
+- Importação rápida de dados por meio das abas `Resumo` e `Rateio` de planilhas Excel.
+- Extração de valores: FOB, Frete, Seguro, CIF, II, IPI, PIS, COFINS, ICMS.
+- Cálculo de conversão (BRL / USD), Despesas Gerais e Custo de Aquisição.
+- Geração de Relatório PDF Consolidado detalhando os custos por DI/Processo.
 
 ---
 
@@ -76,7 +80,8 @@ Este projeto foi construído com **Streamlit + PostgreSQL (Supabase)**, prioriza
 - **Frontend:** Streamlit
 - **Backend:** PostgreSQL (Supabase)
 - **Driver:** psycopg (v3)
-- **Relatórios:** ReportLab (PDF)
+- **Relatórios & PDFs:** ReportLab (Exportação) e FPDF (Fechamento)
+- **Processamento de Dados:** Pandas
 - **Cache:** `st.cache_data` + controle manual
 - **Conexão:** 1 conexão por sessão (otimizada para Streamlit Cloud)
 
@@ -146,8 +151,6 @@ data/hora
 Estrutura preparada para evolução de permissões e perfis
 
 ## 🗺️ Próximos Passos (Fase 2)
-
-- Fechamento financeiro real
 
 - Conciliação automática por regras
 
