@@ -42,7 +42,7 @@ def _editor_with_delete(df, key: str, extra_column_config=None):
 
     return st.data_editor(
         df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         num_rows="fixed",
         key=key,

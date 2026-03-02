@@ -52,7 +52,7 @@ def render_exportacao():
 
     st.markdown("---")
 
-    if st.button("Buscar Dados", use_container_width=True):
+    if st.button("Buscar Dados", width="stretch"):
         df_resultado = get_dados_relatorio_filtrado(dt_inicio, dt_fim, tipo_filtro, selecionado)
         st.session_state['relatorio_cache'] = df_resultado
         st.session_state['filtro_atual'] = f"{tipo_filtro}: {selecionado}"
@@ -76,7 +76,7 @@ def render_exportacao():
         
         st.dataframe(
             df_exibir, 
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "Entrada": st.column_config.NumberColumn(format="R$ %.2f"),
@@ -90,7 +90,7 @@ def render_exportacao():
         c1, c2 = st.columns(2)
 
         with c1:
-            if st.button(f"📄 Baixar Relatório ({st.session_state['filtro_atual']})", use_container_width=True):
+            if st.button(f"📄 Baixar Relatório ({st.session_state['filtro_atual']})", width="stretch"):
                 pdf_bytes = gerar_pdf_treecomex(df_exibir, titulo=f"Relatório - {st.session_state['filtro_atual']}")
                 st.download_button(
                     label="⬇️ Download PDF",
@@ -100,7 +100,7 @@ def render_exportacao():
                 )
 
         with c2:
-            if st.button("⚖️ Baixar Relatório de Licitação", use_container_width=True):
+            if st.button("⚖️ Baixar Relatório de Licitação", width="stretch"):
                 # Filtra Licitação
                 df_licitacao = df_exibir[df_exibir['Categoria'].astype(str).str.contains('Licitação', case=False, na=False)]
                 

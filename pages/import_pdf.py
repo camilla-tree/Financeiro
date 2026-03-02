@@ -489,7 +489,7 @@ def render_import_pdf():
         if df is None or getattr(df, "empty", True):
             st.warning("Nenhuma transação encontrada.")
         else:
-            st.dataframe(df, use_container_width=True)
+            st.dataframe(df, width="stretch")
 
     with col2:
         st.markdown("### Resumo")

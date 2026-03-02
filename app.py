@@ -26,7 +26,7 @@ st.set_page_config(page_title="Treecomex • Conciliação", layout="wide")
 # 2. Inclusão da Logo na parte superior esquerda (Sidebar)
 # Substitua 'logo.png' pelo caminho real do seu arquivo ou uma URL
 try:
-    st.sidebar.image("assets/logo.png", use_container_width=True)
+    st.sidebar.image("assets/logo.png", width="stretch")
 except:
     # Caso a imagem não seja encontrada, exibe o nome para não quebrar o código
     st.sidebar.subheader("Treecomex")

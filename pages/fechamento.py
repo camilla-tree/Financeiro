@@ -206,7 +206,7 @@ def render_fechamento():
         st.markdown("#### 📥 Importar Excel")
         uploaded_file = st.file_uploader("Selecione a planilha (Rateio/Resumo)", type=["xlsx", "xls"])
         
-        if st.button("🧹 Limpar Dados / Nova Importação", use_container_width=True):
+        if st.button("🧹 Limpar Dados / Nova Importação", width="stretch"):
             for key in ["f_dados_excel", "f_df_rateio", "f_markup_cliente", "pdf_bytes", "proc_id_bd", "emp_id_bd", "cli_id_bd"]:
                 st.session_state.pop(key, None)
             st.rerun()
@@ -360,7 +360,7 @@ def render_fechamento():
 
     with col_desp1:
         df_desp = _ensure_despesas_template(pd.DataFrame())
-        edited_desp = st.data_editor(df_desp, use_container_width=True, hide_index=True, key="despesas_editor")
+        edited_desp = st.data_editor(df_desp, width="stretch", hide_index=True, key="despesas_editor")
 
     with col_desp2:
         soma_despesas = sum(float(_to_decimal(r.get("valor_brl"))) for _, r in edited_desp.iterrows())
@@ -408,7 +408,7 @@ def render_fechamento():
     col_btn_1, col_btn_2 = st.columns([1, 1])
     
     with col_btn_1:
-        if st.button("💾 Salvar Dados e Gerar Relatório", type="primary", use_container_width=True):
+        if st.button("💾 Salvar Dados e Gerar Relatório", type="primary", width="stretch"):
             
             # --- 1. Dicionário de Carga para o Banco e PDF ---
             payload = {
@@ -469,5 +469,5 @@ def render_fechamento():
                 data=st.session_state["pdf_bytes"],
                 file_name=f"Fechamento_{ref_input}.pdf",
                 mime="application/pdf",
-                use_container_width=True
+                width="stretch"
             )

@@ -106,7 +106,7 @@ def render_admin_usuarios():
 
         edited = st.data_editor(
             df,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             num_rows="fixed",
             key="u_editor",
@@ -174,7 +174,7 @@ def render_admin_usuarios():
         if df_log is None or df_log.empty:
             st.caption("Sem logins registrados ainda.")
         else:
-            st.dataframe(df_log, use_container_width=True)
+            st.dataframe(df_log, width="stretch")
 
         st.divider()
 

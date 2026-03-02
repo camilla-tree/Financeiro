@@ -96,16 +96,16 @@ def render_conciliacao():
         st.session_state["conc_force_reload"] = True
 
     with a1:
-        if st.button("Mês atual", use_container_width=True):
+        if st.button("Mês atual", width="stretch"):
             _set_periodo(primeiro_dia_mes, today)
     with a2:
-        if st.button("Últimos 7d", use_container_width=True):
+        if st.button("Últimos 7d", width="stretch"):
             _set_periodo(today - timedelta(days=7), today)
     with a3:
-        if st.button("Últimos 30d", use_container_width=True):
+        if st.button("Últimos 30d", width="stretch"):
             _set_periodo(today - timedelta(days=30), today)
     with a4:
-        if st.button("Últimos 90d", use_container_width=True):
+        if st.button("Últimos 90d", width="stretch"):
             _set_periodo(today - timedelta(days=90), today)
 
 
@@ -280,7 +280,7 @@ def render_conciliacao():
                 df_view["_delete"] = False
                 edited_cat = st.data_editor(
                     df_view,
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                     num_rows="fixed",
                     column_config={
@@ -339,7 +339,7 @@ def render_conciliacao():
         c_busca, c_info = st.columns([1, 3])
         with c_busca:
             vinc_mid = st.number_input("Buscar ID Movimento", min_value=0, step=1, key="rateio_mid")
-            btn_buscar = st.button("Buscar Lançamento", use_container_width=True)
+            btn_buscar = st.button("Buscar Lançamento", width="stretch")
             
         if btn_buscar and vinc_mid > 0:
             st.session_state["active_rateio_mid"] = vinc_mid
@@ -385,7 +385,7 @@ def render_conciliacao():
                 # 3. Data Editor Dinâmico
                 edited_rateio = st.data_editor(
                     df_edit,
-                    use_container_width=True,
+                    width="stretch",
                     num_rows="dynamic",
                     hide_index=True,
                     column_config={
@@ -554,7 +554,7 @@ def render_conciliacao():
         
     with col_btn_refresh:
         st.write("") # Espaçamento para alinhar com o título
-        if st.button("🔄 Atualizar Tabela", use_container_width=True):
+        if st.button("🔄 Atualizar Tabela", width="stretch"):
             st.session_state["conc_force_reload"] = True
             st.cache_data.clear()
             st.rerun()
@@ -584,7 +584,7 @@ def render_conciliacao():
 
     edited = st.data_editor(
         df_tbl,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "ID": st.column_config.NumberColumn("ID", disabled=True, width="small"),
@@ -602,7 +602,7 @@ def render_conciliacao():
         key="conc_editor",
     )
 
-    if st.button("💾 Salvar Alterações da Tabela", type="primary", use_container_width=True):
+    if st.button("💾 Salvar Alterações da Tabela", type="primary", width="stretch"):
         changes = calcular_changes(df_mov=df_mov, edited=edited, maps=maps)
         if not changes:
             st.info("Nenhuma alteração detectada na tabela.")
