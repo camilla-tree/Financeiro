@@ -7,3 +7,8 @@ secrets.toml
 .streamlit/secrets.toml
 abrir.bat
 run_treecomex.sh
+.venv
+parse_sicoob_test.py
+parse_sicoob_test2.py
+parse_sicoob_test3.py
+test_parsed_sicoob_df.py

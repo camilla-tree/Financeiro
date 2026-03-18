@@ -9,3 +9,4 @@ Pillow
 psycopg_pool
 openpyxl
 fpdf
+pymupdf
