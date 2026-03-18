@@ -226,7 +226,7 @@ def render_admin():
                 status_nome = st.selectbox("status*", status_names, key="p_status")
 
                 data_registro = st.date_input("data_registro", value=date.today(), key="p_dt")
-                di = st.text_input("di (opcional)", key="p_di")
+                di = st.text_input("di*", key="p_di")
                 canal = st.text_input("canal (opcional)", key="p_canal")
                 bl = st.text_input("bl (opcional)", key="p_bl")
                 invoice = st.text_input("invoice (opcional)", key="p_invoice")
