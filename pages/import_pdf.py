@@ -21,6 +21,7 @@ from parsers.nubank_csv import parse_nubank_csv
 from parsers.santander import parse_santander
 from parsers.sicredi import parse_sicredi
 from parsers.bb import parse_bb
+from parsers.sicoob import parse_sicoob_pdf
 
 
 
@@ -32,7 +33,7 @@ PARSERS = {
     "SANTANDER": parse_santander,
     "SICREDI": parse_sicredi,
     "BB": parse_bb,
-
+    "SICOOB": parse_sicoob_pdf,
 }
 
 
