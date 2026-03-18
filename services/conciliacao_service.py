@@ -30,18 +30,23 @@ def calcular_changes(
     df_mov: pd.DataFrame,
     edited: pd.DataFrame,
     maps: ConciliacaoMaps,
-) -> List[Tuple[int, Optional[int], Optional[int], bool, Optional[str]]]:
+) -> List[Tuple[int, Optional[int], Optional[int], bool, Optional[str], bool]]:
     """
     Retorna lista de changes no formato:
-      (movimento_id, new_cat_id, new_proc_id, want_conc, new_obs)
+      (movimento_id, new_cat_id, new_proc_id, want_conc, new_obs, want_cliente)
       Nota: new_proc_id será sempre None aqui, pois o vínculo é feito na seção dedicada.
     """
     current_is_conc = {
         int(r["movimento_id"]): bool(pd.notna(r["conciliacao_id"]))
         for _, r in df_mov.iterrows()
     }
+    
+    current_is_cliente = {
+        int(r["movimento_id"]): bool(r.get("is_cliente", False))
+        for _, r in df_mov.iterrows()
+    }
 
-    changes: List[Tuple[int, Optional[int], Optional[int], bool, Optional[str]]] = []
+    changes: List[Tuple[int, Optional[int], Optional[int], bool, Optional[str], bool]] = []
 
     # Para lookup rápido
     df_mov_by_id = df_mov.set_index("movimento_id", drop=False)
@@ -58,6 +63,9 @@ def calcular_changes(
         want_conc = bool(edited.loc[i, "Conciliado"])
         already_conc = current_is_conc.get(mid, False)
 
+        want_cliente = bool(edited.loc[i, "Pgto_Cliente"])
+        already_cliente = current_is_cliente.get(mid, False)
+
         # Regra: se já conciliado, não permite desmarcar por aqui (fase 1)
         if already_conc and (not want_conc):
             want_conc = True
@@ -71,20 +79,21 @@ def calcular_changes(
             new_obs = ""
         new_obs_str = str(new_obs)
 
-        # Detecta mudanças (Categoria, Observação ou Status Conciliado)
+        # Detecta mudanças (Categoria, Observação ou Status Conciliado ou Cliente)
         if (
             new_cat_id != old_cat
             or new_obs_str != old_obs
             or (want_conc != already_conc)
+            or (want_cliente != already_cliente)
         ):
             obs_to_save = (new_obs_str.strip() or None)
-            changes.append((mid, new_cat_id, new_proc_id, want_conc, obs_to_save))
+            changes.append((mid, new_cat_id, new_proc_id, want_conc, obs_to_save, want_cliente))
 
     return changes
 
 
 def aplicar_changes_no_banco(
-    changes: List[Tuple[int, Optional[int], Optional[int], bool, Optional[str]]],
+    changes: List[Tuple[int, Optional[int], Optional[int], bool, Optional[str], bool]],
     *,
     usuario_id: Optional[int],
     status_confirmada_id: int,
@@ -95,11 +104,11 @@ def aplicar_changes_no_banco(
     with fresh_conn() as conn:
         try:
             with conn.cursor() as cur:
-                for mid, new_cat_id, _, want_conc, new_obs in changes:
-                    # 1) Categoria atualiza no movimento_bancario
+                for mid, new_cat_id, _, want_conc, new_obs, want_cliente in changes:
+                    # 1) Categoria e Is_cliente atualiza no movimento_bancario
                     cur.execute(
-                        "UPDATE movimento_bancario SET categoria_id = %s WHERE id = %s",
-                        (new_cat_id, int(mid)),
+                        "UPDATE movimento_bancario SET categoria_id = %s, is_cliente = %s WHERE id = %s",
+                        (new_cat_id, want_cliente, int(mid)),
                     )
 
                     # 2) Conciliação (Tabela Mestre)

@@ -491,6 +491,7 @@ def render_conciliacao():
             mb.valor AS valor_total,              -- Valor original do lançamento
             mp.valor_atribuido AS valor_rateio,   -- Valor específico deste rateio
             mb.tipo_id,
+            mb.is_cliente,
             mt.nome AS tipo_nome,
             COALESCE(mp.categoria_id, mb.categoria_id) AS categoria_id,
             COALESCE(cf_mp.nome, cf_mb.nome) AS categoria_nome,
@@ -580,7 +581,7 @@ def render_conciliacao():
         "Categoria": df_mov["categoria_id"].apply(_cat_label),
         "Cliente": df_mov["cliente_nome"].fillna("-"),
         "Conciliado": is_conciliado_series.astype(bool),
-        "Pgto_Cliente": False,
+        "Pgto_Cliente": df_mov["is_cliente"].fillna(False).astype(bool),
     })
 
     edited = st.data_editor(
