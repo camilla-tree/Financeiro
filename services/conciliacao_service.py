@@ -70,9 +70,20 @@ def calcular_changes(
         if already_conc and (not want_conc):
             want_conc = True
 
-        old_row = df_mov_by_id.loc[mid]
+        try:
+            old_row = df_mov_by_id.loc[mid]
+            if isinstance(old_row, pd.DataFrame):
+                old_row = old_row.iloc[0]
+        except KeyError:
+            continue
+            
         old_cat = _safe_int(old_row.get("categoria_id"))
-        old_obs = (old_row.get("observacao") or "")
+        
+        # Safe extraction for potentially duplicate or nan values
+        old_obs_val = old_row.get("observacao")
+        if isinstance(old_obs_val, pd.Series):
+            old_obs_val = old_obs_val.iloc[0]
+        old_obs = (old_obs_val or "")
 
         new_obs = edited.loc[i, "Observação"]
         if new_obs is None:
