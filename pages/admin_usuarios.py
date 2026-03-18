@@ -8,12 +8,12 @@ from audit import log_action
 
 # ⚠️ IMPORTANTE: esses nomes precisam bater 100% com o que o app usa no menu (app.py)
 TELAS = [
-    "Admin Usuários",
     "Cadastros",
     "Importar Extrato PDF",
     "Conciliação",
     "Relatórios de Cliente",
     "Fechamento",
+    "Admin Usuários",
 ]
 
 

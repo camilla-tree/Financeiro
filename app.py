@@ -104,12 +104,12 @@ if not st.session_state.get("is_admin"):
 st.title("Treecomex • Sistema Integrado (Fase 1)")
 
 PAGES = [
-    "Admin Usuários",
     "Cadastros",
     "Importar Extrato PDF",
     "Conciliação",
     "Relatórios de Cliente",
     "Fechamento",
+    "Admin Usuários",
 ]
 
 
