@@ -54,6 +54,7 @@ DEFAULTS = {
     "usuario_id": None,
     "is_admin": False,
     "access_key": None,
+    "user_nome": "Usuário",
 }
 for k, v in DEFAULTS.items():
     if k not in st.session_state:
@@ -64,7 +65,7 @@ def _logout():
     # limpa sessão relacionada ao acesso e telas
     for k in [
         "auth_ok", "usuario_id", "is_admin", "access_key",
-        "import_preview", "conc_df_mov"
+        "import_preview", "conc_df_mov", "user_nome"
     ]:
         st.session_state.pop(k, None)
 
@@ -73,6 +74,7 @@ def _logout():
     st.session_state["usuario_id"] = None
     st.session_state["is_admin"] = False
     st.session_state["access_key"] = None
+    st.session_state["user_nome"] = "Usuário"
 
     st.rerun()
 

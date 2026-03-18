@@ -4,7 +4,7 @@ import secrets
 import string
 import streamlit as st
 from streamlit.errors import StreamlitSecretNotFoundError
-from db import fetch_df_cached
+from db import fetch_df_cached, run_sql
 
 ALPHABET = string.ascii_letters + string.digits
 
@@ -13,17 +13,7 @@ def generate_access_key(length: int = 12) -> str:
     return "".join(secrets.choice(ALPHABET) for _ in range(length))
 
 
-def _get_admin_key() -> str:
-    # 1) tenta .env
-    v = os.getenv("ADMIN_ACCESS_KEY")
-    if v:
-        return v.strip()
 
-    # 2) tenta st.secrets (sem quebrar se não existir)
-    try:
-        return (st.secrets.get("ADMIN_ACCESS_KEY") or "").strip()
-    except StreamlitSecretNotFoundError:
-        return ""
 
 
 def require_access():
@@ -45,20 +35,12 @@ def require_access():
             st.error("A chave deve ter 12 caracteres.")
             st.stop()
 
-        # ---------- ADMIN ----------
-        admin_key = _get_admin_key()
-        st.write("DEBUG admin_key:", _get_admin_key())
-        if admin_key and key == admin_key:
-            st.session_state["auth_ok"] = True
-            st.session_state["is_admin"] = True
-            st.session_state["usuario_id"] = None
-            st.session_state["access_key"] = key
-            st.rerun()
+
 
         # ---------- USUÁRIO NORMAL ----------
         df = fetch_df_cached(
             """
-            SELECT id
+            SELECT id, nome
             FROM usuario
             WHERE access_key = %s
               AND ativo = true
@@ -71,9 +53,32 @@ def require_access():
             st.error("Chave inválida ou usuário inativo.")
             st.stop()
 
+        usuario_id = int(df["id"].iloc[0])
+        usuario_nome = str(df["nome"].iloc[0])
+
+        # Registrar no log
+        try:
+            ip = None
+            user_agent = None
+            if hasattr(st, "context") and hasattr(st.context, "headers"):
+                # Streamlit >= 1.37
+                headers = getattr(st.context, "headers", {})
+                ip = headers.get("X-Forwarded-For", headers.get("Remote-Addr", ""))
+                if ip and "," in ip:
+                    ip = ip.split(",")[0].strip()
+                user_agent = headers.get("User-Agent", "")
+            
+            run_sql(
+                "INSERT INTO usuario_login (usuario_id, ip, user_agent) VALUES (%s, %s, %s)",
+                (usuario_id, ip, user_agent)
+            )
+        except Exception as e:
+            print("Erro ao registrar login:", e)
+
         st.session_state["auth_ok"] = True
         st.session_state["is_admin"] = False
-        st.session_state["usuario_id"] = int(df["id"].iloc[0])
+        st.session_state["usuario_id"] = usuario_id
+        st.session_state["user_nome"] = usuario_nome
         st.session_state["access_key"] = key
         st.rerun()
 
