@@ -1,11 +1,10 @@
 import re
 import fitz
-import pandas as pd
 from datetime import datetime
 
-def parse_sicoob_pdf(lines: list[str]) -> pd.DataFrame:
+def parse_sicoob_pdf(lines: list[str]) -> list[dict]:
     """
-    Lê um extrato PDF do SICOOB (lista de linhas) e retorna um DataFrame com:
+    Lê um extrato PDF do SICOOB (lista de linhas) e retorna uma lista de dicionários com:
     [data_movimento, documento, descricao, valor, tipo, origem_formato, texto_raw, pagina, linha_ordem]
     """
 
@@ -66,4 +65,4 @@ def parse_sicoob_pdf(lines: list[str]) -> pd.DataFrame:
         records.append(current_record)
         
     final_records = [r for r in records if "SALDO ANTERIOR" not in r["descricao"]]
-    return pd.DataFrame(final_records)
+    return final_records
