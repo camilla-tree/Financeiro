@@ -304,6 +304,21 @@ def get_lista_clientes() -> List[str]:
         return []
     return df["nome"].tolist()
 
+def get_empresas_por_cliente(cliente_nome: str) -> List[str]:
+    """Retorna lista de nomes das empresas que possuem processos para um cliente especifico."""
+    sql = """
+        SELECT DISTINCT e.nome
+        FROM empresa e
+        JOIN processo p ON p.empresa_id = e.id
+        JOIN cliente c ON c.id = p.cliente_id
+        WHERE c.nome = %s
+        ORDER BY e.nome
+    """
+    df = fetch_df_cached(sql, (cliente_nome,))
+    if df.empty:
+        return []
+    return df["nome"].tolist()
+
 def get_lista_empresas() -> List[str]:
     """Retorna lista de nomes da tabela empresa (singular)."""
     # Seu SQL usa 'empresa' no singular
@@ -312,11 +327,9 @@ def get_lista_empresas() -> List[str]:
         return []
     return df["nome"].tolist()
 
-def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtro) -> pd.DataFrame:
+def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtro, empresa_selecionada=None) -> pd.DataFrame:
     """
     Usa a VIEW vw_movimento_bancario_conciliado para gerar o relatório.
-    - Faz JOIN com conciliacao para pegar Observação personalizada.
-    - Faz JOIN com empresa para mostrar de quem é a conta bancária.
     """
     
     sql = """
@@ -336,33 +349,47 @@ def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtr
             v.tipo_movimento as "Tipo", 
             v.categoria_financeira as "Categoria", 
             
-            -- Valores separados
+            -- Valores da Lógica de Cálculo de Saldo (Vêm da transação root)
+            mb.valor as "Valor_Original",
+            mb.is_cliente as "Is_Cliente",
+            
+            -- Valores rateados separados
             CASE WHEN v.valor > 0 THEN v.valor ELSE 0 END as "Entrada",
             CASE WHEN v.valor < 0 THEN ABS(v.valor) ELSE 0 END as "Saída",
             
-            v.saldo as "Saldo",
-            
-            -- Campos para filtro (ocultos na lógica, mas usados no WHERE)
-            v.cliente_nome
+            v.saldo as "Saldo"
             
         FROM vw_movimento_bancario_conciliado v
         JOIN conta_bancaria cb ON v.conta_bancaria_id = cb.id
         JOIN empresa e ON cb.empresa_id = e.id
+        LEFT JOIN concatenar tbl_c_dummy ON v.conciliacao_id = -1 -- placeholder ignorado, substituindo por LEFT JOIN abaixo real
+        -- Re-join with conciliacao
         LEFT JOIN conciliacao tbl_c ON v.conciliacao_id = tbl_c.id
+        -- Re-join root movement to get is_cliente and original value
+        JOIN movimento_bancario mb ON mb.id = v.movimento_id
         
         WHERE v.dt_movimento BETWEEN %s AND %s
     """
     
     params = [data_inicio, data_fim]
 
-    # Filtros
-    if tipo_filtro == "Cliente" and valor_filtro != "Todos":
-        sql += " AND v.cliente_nome = %s"
-        params.append(valor_filtro)
+    # Filtros Opcionais Adicionais
+    if tipo_filtro == "Cliente":
+        # Se for para o relatorio de cliente, o is_cliente TEM que ser obrigatorio (só aparece is_cliente=true na view do cliente)
+        sql += " AND mb.is_cliente = true "
         
-    elif tipo_filtro == "Empresa" and valor_filtro != "Todas":
-        sql += " AND e.nome = %s"
-        params.append(valor_filtro)
+        if valor_filtro != "Todos":
+            sql += " AND v.cliente_nome = %s "
+            params.append(valor_filtro)
+            
+        if empresa_selecionada and empresa_selecionada != "Todas":
+            sql += " AND e.nome = %s "
+            params.append(empresa_selecionada)
+            
+    elif tipo_filtro == "Empresa":
+        if valor_filtro != "Todas":
+            sql += " AND e.nome = %s "
+            params.append(valor_filtro)
     
     sql += " ORDER BY e.nome ASC, v.dt_movimento ASC, v.movimento_id ASC"
 

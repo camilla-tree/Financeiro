@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 from datetime import date
-from db import get_lista_clientes, get_lista_empresas, get_dados_relatorio_filtrado
+from db import get_lista_clientes, get_lista_empresas, get_dados_relatorio_filtrado, get_empresas_por_cliente
+import zipfile
 
 # Bibliotecas para PDF
 from reportlab.lib.pagesizes import A4, landscape
@@ -39,13 +40,21 @@ def render_exportacao():
             dt_inicio = c1.date_input("Início", value=date.today().replace(day=1))
             dt_fim = c2.date_input("Fim", value=date.today())
 
-        with col_type:
-            tipo_filtro = st.radio("Filtrar por:", ["Cliente", "Empresa"])
+            tipo_filtro = st.radio("Filtrar por:", ["Cliente", "Empresa"], key="exp_tipo")
 
         with col_select:
+            saldo_inicial = 0.0
+            selecionado_emp = None
             if tipo_filtro == "Cliente":
                 opcoes = ["Todos"] + get_lista_clientes()
                 selecionado = st.selectbox("Selecione o Cliente", opcoes)
+                if selecionado != "Todos":
+                    opcoes_emp = ["Todas"] + get_empresas_por_cliente(selecionado)
+                    selecionado_emp = st.selectbox("Selecione a Empresa", opcoes_emp)
+                else:
+                    selecionado_emp = None
+                
+                saldo_inicial = st.number_input("Saldo Inicial", value=0.00, step=100.0)
             else:
                 opcoes = ["Todas"] + get_lista_empresas()
                 selecionado = st.selectbox("Selecione a Empresa", opcoes)
@@ -53,9 +62,37 @@ def render_exportacao():
     st.markdown("---")
 
     if st.button("Buscar Dados", width="stretch"):
-        df_resultado = get_dados_relatorio_filtrado(dt_inicio, dt_fim, tipo_filtro, selecionado)
+        df_resultado = get_dados_relatorio_filtrado(dt_inicio, dt_fim, tipo_filtro, selecionado, selecionado_emp)
+        
+        # Calculate running Saldo if Cliente
+        if tipo_filtro == "Cliente" and not df_resultado.empty:
+            if selecionado_emp == "Todas":
+                # Separa saldo por empresa
+                novo_saldo_col = []
+                saldos_atuais = {} 
+                for idx, row in df_resultado.iterrows():
+                    emp = row["Empresa"]
+                    if emp not in saldos_atuais:
+                        saldos_atuais[emp] = float(saldo_inicial)
+                    val = float(row.get("Valor_Original", 0.0))
+                    saldos_atuais[emp] += val
+                    novo_saldo_col.append(saldos_atuais[emp])
+                df_resultado["Saldo"] = novo_saldo_col
+            else:
+                saldo_atual = float(saldo_inicial)
+                novo_saldo_col = []
+                for idx, row in df_resultado.iterrows():
+                    val = float(row.get("Valor_Original", 0.0))
+                    saldo_atual += val
+                    novo_saldo_col.append(saldo_atual)
+                df_resultado["Saldo"] = novo_saldo_col
+
         st.session_state['relatorio_cache'] = df_resultado
-        st.session_state['filtro_atual'] = f"{tipo_filtro}: {selecionado}"
+        desc_emp = f" - {selecionado_emp}" if selecionado_emp else ""
+        st.session_state['filtro_atual'] = f"{tipo_filtro}: {selecionado}{desc_emp}"
+        st.session_state['filtro_cli_emp'] = (selecionado, selecionado_emp)
+        st.session_state['saldo_inicial'] = saldo_inicial
+        st.session_state['is_cliente_mode'] = (tipo_filtro == "Cliente")
 
     # Recupera do Cache
     df = st.session_state.get('relatorio_cache', pd.DataFrame())
@@ -90,14 +127,35 @@ def render_exportacao():
         c1, c2 = st.columns(2)
 
         with c1:
-            if st.button(f"📄 Baixar Relatório ({st.session_state['filtro_atual']})", width="stretch"):
-                pdf_bytes = gerar_pdf_treecomex(df_exibir, titulo=f"Relatório - {st.session_state['filtro_atual']}")
-                st.download_button(
-                    label="⬇️ Download PDF",
-                    data=pdf_bytes,
-                    file_name="Relatorio_Geral.pdf",
-                    mime="application/pdf"
-                )
+            fc, fe = st.session_state.get('filtro_cli_emp', (None, None))
+            is_cliente_mode = st.session_state.get('is_cliente_mode', False)
+            sal_ini = st.session_state.get('saldo_inicial', 0.0)
+            
+            if is_cliente_mode and fe == "Todas":
+                if st.button("📦 Gerar ZIP (Múltiplas Empresas)", width="stretch"):
+                    buffer_zip = BytesIO()
+                    with zipfile.ZipFile(buffer_zip, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                        for emp_name, group_df in df_exibir.groupby("Empresa"):
+                            pdf_bytes = gerar_pdf_treecomex(group_df, titulo=f"{fc} - {emp_name}",
+                                saldo_inicial=sal_ini, is_cliente=True)
+                            zip_file.writestr(f"Relatorio_{fc}_{emp_name}.pdf", pdf_bytes)
+                    
+                    st.download_button(
+                        label="⬇️ Download ZIP Pronto",
+                        data=buffer_zip.getvalue(),
+                        file_name=f"Relatorios_{fc}.zip",
+                        mime="application/zip",
+                    )
+            else:
+                if st.button(f"📄 Gerar Relatório", width="stretch"):
+                    pdf_bytes = gerar_pdf_treecomex(df_exibir, titulo=f"{st.session_state['filtro_atual']}",
+                        saldo_inicial=sal_ini, is_cliente=is_cliente_mode)
+                    st.download_button(
+                        label="⬇️ Download PDF Pronto",
+                        data=pdf_bytes,
+                        file_name="Relatorio.pdf",
+                        mime="application/pdf"
+                    )
 
         with c2:
             if st.button("⚖️ Baixar Relatório de Licitação", width="stretch"):
@@ -120,7 +178,7 @@ def render_exportacao():
 
 
 # --- FUNÇÃO PDF AJUSTADA PARA NOVA COLUNA ---
-def gerar_pdf_treecomex(df, titulo="Relatório"):
+def gerar_pdf_treecomex(df, titulo="Relatório", saldo_inicial=0.0, is_cliente=False):
     buffer = BytesIO()
     # Margens menores para caber mais colunas
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=5*mm, leftMargin=5*mm, topMargin=10*mm, bottomMargin=10*mm)
@@ -135,7 +193,24 @@ def gerar_pdf_treecomex(df, titulo="Relatório"):
     except:
         logo = Paragraph("Treecomex", styles['Normal'])
 
-    titulo_text = Paragraph(titulo, styles['Title'])
+    if is_cliente:
+        saldo_atual = float(df["Saldo"].iloc[-1]) if not df.empty else saldo_inicial
+        
+        mes_str = ""
+        if not df.empty and pd.notnull(df["Data"].iloc[0]):
+            try:
+                dt_obj = pd.to_datetime(df["Data"].iloc[0])
+                mes_str = dt_obj.strftime("%m/%Y")
+            except:
+                pass
+                
+        header_html = f"""
+        <font size="14"><b>{titulo}</b></font><br/>
+        <font size="10">Mês: {mes_str} | Saldo Anterior: R$ {saldo_inicial:,.2f} | Saldo Atual: R$ {saldo_atual:,.2f}</font>
+        """
+        titulo_text = Paragraph(header_html, styles['Normal'])
+    else:
+        titulo_text = Paragraph(titulo, styles['Title'])
     
     data_header = [[titulo_text, logo]]
     t_header = Table(data_header, colWidths=[200*mm, 80*mm])
