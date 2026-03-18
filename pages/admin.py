@@ -52,12 +52,12 @@ def _editor_with_delete(df, key: str, extra_column_config=None):
 
 def render_admin():
     st.subheader("Admin de Cadastros")
-    tabs = st.tabs(["Empresa", "Cliente", "Processo", "Conta Bancária"])
+    tabs = st.tabs(["Processo", "Empresa", "Cliente", "Conta Bancária"])
 
     # =========================
     # EMPRESA
     # =========================
-    with tabs[0]:
+    with tabs[1]:
         colA, colB = st.columns([1, 2])
 
         with colA:
@@ -135,7 +135,7 @@ def render_admin():
     # =========================
     # CLIENTE (SEM CNPJ)
     # =========================
-    with tabs[1]:
+    with tabs[2]:
         colA, colB = st.columns([1, 2])
 
         with colA:
@@ -196,7 +196,7 @@ def render_admin():
     # =========================
     # PROCESSO
     # =========================
-    with tabs[2]:
+    with tabs[0]:
         df_emp = fetch_df_cached("SELECT id, nome FROM empresa ORDER BY nome")
         df_cli = fetch_df_cached("SELECT id, nome FROM cliente ORDER BY nome")
         df_status = fetch_df_cached("SELECT id, nome FROM processo_status ORDER BY nome")
