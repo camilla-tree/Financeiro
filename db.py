@@ -362,7 +362,6 @@ def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtr
         FROM vw_movimento_bancario_conciliado v
         JOIN conta_bancaria cb ON v.conta_bancaria_id = cb.id
         JOIN empresa e ON cb.empresa_id = e.id
-        LEFT JOIN concatenar tbl_c_dummy ON v.conciliacao_id = -1 -- placeholder ignorado, substituindo por LEFT JOIN abaixo real
         -- Re-join with conciliacao
         LEFT JOIN conciliacao tbl_c ON v.conciliacao_id = tbl_c.id
         -- Re-join root movement to get is_cliente and original value
