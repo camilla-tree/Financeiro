@@ -7,6 +7,18 @@ from audit import log_action
 import psycopg
 
 
+def _row_changed(r, orig, cols):
+    if orig is None:
+        return True
+    for col in cols:
+        if col == "id": continue
+        v_new = r[col]
+        v_orig = orig.get(col)
+        if pd.isna(v_new) and pd.isna(v_orig):
+            continue
+        if v_new != v_orig:
+            return True
+    return False
 
 def norm_upper(s: str) -> str:
     s = (s or "").strip()
@@ -109,7 +121,13 @@ def render_admin():
 
 
                 upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
+                view_dict = view.set_index("id").to_dict(orient="index")
                 for _, r in upd.iterrows():
+                    r_id = int(r["id"])
+                    orig = view_dict.get(r_id)
+                    if not _row_changed(r, orig, view.columns):
+                        continue
+                    
                     try:
                         run_sql(
                             """
@@ -180,7 +198,13 @@ def render_admin():
 
 
                 upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
+                view_dict = df.set_index("id").to_dict(orient="index")
                 for _, r in upd.iterrows():
+                    r_id = int(r["id"])
+                    orig = view_dict.get(r_id)
+                    if not _row_changed(r, orig, df.columns):
+                        continue
+                    
                     run_sql(
                         """
                         UPDATE cliente
@@ -326,7 +350,13 @@ def render_admin():
 
 
                         upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
+                        view_dict = view.set_index("id").to_dict(orient="index")
                         for _, r in upd.iterrows():
+                            r_id = int(r["id"])
+                            orig = view_dict.get(r_id)
+                            if not _row_changed(r, orig, view.columns):
+                                continue
+                                
                             emp_val = emp_id_by_name.get(r["empresa"])
                             cli_val = cli_id_by_name.get(r["cliente"])
                             
@@ -468,7 +498,13 @@ def render_admin():
 
 
                         upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
+                        view_dict = view.set_index("id").to_dict(orient="index")
                         for _, r in upd.iterrows():
+                            r_id = int(r["id"])
+                            orig = view_dict.get(r_id)
+                            if not _row_changed(r, orig, view.columns):
+                                continue
+                                
                             emp_val = emp_id_by_name.get(r["empresa"])
                             banco_val = banco_id_by_code.get(r["banco"])
                             
