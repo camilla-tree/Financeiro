@@ -1,6 +1,7 @@
 from datetime import date
 import re
 import streamlit as st
+import pandas as pd
 from db import fetch_df_cached, run_sql, run_sql_returning_id
 from audit import log_action
 import psycopg
@@ -223,7 +224,11 @@ def render_admin():
                 referencia = st.text_input("referencia*", key="p_ref")
                 emp_nome = st.selectbox("empresa*", emp_names, key="p_emp")
                 cli_nome = st.selectbox("cliente*", cli_names, key="p_cli")
-                status_nome = st.selectbox("status*", status_names, key="p_status")
+                try:
+                    default_status_idx = status_names.index("ABERTO")
+                except ValueError:
+                    default_status_idx = 0
+                status_nome = st.selectbox("status*", status_names, index=default_status_idx, key="p_status")
 
                 data_registro = st.date_input("data_registro", value=date.today(), key="p_dt")
                 di = st.text_input("di*", key="p_di")
@@ -295,7 +300,7 @@ def render_admin():
                 else:
                     df["empresa"] = df["empresa_id"].map(emp_name_by_id)
                     df["cliente"] = df["cliente_id"].map(cli_name_by_id)
-                    df["status"] = df["status_id"].map(status_name_by_id)
+                    df["status"] = df["status_id"].map(status_name_by_id).fillna("ABERTO")
 
                     view = df[
                         ["id", "referencia", "empresa", "cliente", "status",
@@ -324,7 +329,11 @@ def render_admin():
                         for _, r in upd.iterrows():
                             emp_val = emp_id_by_name.get(r["empresa"])
                             cli_val = cli_id_by_name.get(r["cliente"])
-                            status_val = status_id_by_name.get(r["status"])
+                            
+                            status_raw = r["status"]
+                            if pd.isna(status_raw) or str(status_raw).strip() == "":
+                                status_raw = "ABERTO"
+                            status_val = status_id_by_name.get(status_raw)
                             
                             run_sql(
                                 """
@@ -356,7 +365,7 @@ def render_admin():
                                     int(r["id"]),
                                 ),
                             )
-                            log_action("UPDATE", "processo", int(r["id"]), {"referencia": r["referencia"], "empresa": r["empresa"], "cliente": r["cliente"], "status": r["status"]})
+                            log_action("UPDATE", "processo", int(r["id"]), {"referencia": r["referencia"], "empresa": r["empresa"], "cliente": r["cliente"], "status": status_raw})
 
                         st.success("Alterações aplicadas.")
                         st.cache_data.clear()
