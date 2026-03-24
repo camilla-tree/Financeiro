@@ -394,3 +394,45 @@ def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtr
     sql += " ORDER BY e.nome ASC, v.dt_movimento ASC, v.movimento_id ASC"
 
     return fetch_df(sql, tuple(params))
+
+def get_historico_importacoes() -> pd.DataFrame:
+    """Retorna o histórico de extratos importados com dados de auditoria."""
+    sql = """
+        SELECT
+            ei.id as "ID Extrato",
+            COALESCE(u.nome, 'Sistema') as "Usuário",
+            ei.dt_importacao as "Data Importação",
+            e.nome as "Empresa",
+            cb.apelido as "Conta Bancária",
+            MIN(mb.dt_movimento) as "Data Inicial",
+            MAX(mb.dt_movimento) as "Data Final",
+            ei.status as "Status"
+        FROM extrato_importacao ei
+        LEFT JOIN usuario u ON ei.usuario_id = u.id
+        JOIN conta_bancaria cb ON ei.conta_bancaria_id = cb.id
+        JOIN empresa e ON cb.empresa_id = e.id
+        -- Usando JOIN interno para esconder os extratos que tiverem seus movimentos excluídos
+        JOIN movimento_bancario mb ON mb.importacao_id = ei.id
+        GROUP BY ei.id, u.nome, ei.dt_importacao, e.nome, cb.apelido, ei.status
+        ORDER BY ei.dt_importacao DESC
+    """
+    return fetch_df(sql)
+
+def check_extrato_conciliado(importacao_id: int) -> bool:
+    """Retorna True se existe algum movimento bancário deste extrato que já foi conciliado."""
+    sql = """
+        SELECT 1
+        FROM movimento_bancario mb
+        LEFT JOIN conciliacao c ON c.movimento_bancario_id = mb.id
+        LEFT JOIN movimento_processo mp ON mp.movimento_bancario_id = mb.id
+        WHERE mb.importacao_id = %s AND (c.id IS NOT NULL OR mp.id IS NOT NULL)
+        LIMIT 1
+    """
+    df = fetch_df(sql, (importacao_id,))
+    return not df.empty
+
+def delete_movimentos_extrato(importacao_id: int) -> None:
+    """Deleta os movimentos bancários associados à importação. As linhas raw e a importação são mantidas."""
+    # Como garantimos antes que não há correlação nas tabelas de conciliação, é seguro deletar movimentos diretos.
+    sql = "DELETE FROM movimento_bancario WHERE importacao_id = %s;"
+    run_sql(sql, (importacao_id,))

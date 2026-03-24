@@ -10,6 +10,7 @@ from audit import log_action
 TELAS = [
     "Cadastros",
     "Importar Extrato PDF",
+    "Gerenciamento de Extratos",
     "Conciliação",
     "Relatórios de Cliente",
     "Fechamento",

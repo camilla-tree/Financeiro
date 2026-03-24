@@ -7,6 +7,7 @@ from pages.import_pdf import render_import_pdf
 from pages.conciliacao import render_conciliacao
 from pages.fechamento import render_fechamento
 from pages.exportacao import render_exportacao
+from pages.gerenciamento_extratos import render_gerenciamento_extratos
 
 from db import fetch_df_cached
 
@@ -113,6 +114,7 @@ st.title("HURR PARTICIPAÇÕES • Sistema Integrado (Fase 1)")
 PAGES = [
     "Cadastros",
     "Importar Extrato PDF",
+    "Gerenciamento de Extratos",
     "Conciliação",
     "Relatórios de Cliente",
     "Fechamento",
@@ -156,5 +158,7 @@ elif page == "Conciliação":
     render_conciliacao()
 elif page == "Relatórios de Cliente":
     render_exportacao()
+elif page == "Gerenciamento de Extratos":
+    render_gerenciamento_extratos()
 else:
     render_fechamento()
