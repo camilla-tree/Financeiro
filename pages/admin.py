@@ -322,6 +322,10 @@ def render_admin():
 
                         upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
                         for _, r in upd.iterrows():
+                            emp_val = emp_id_by_name.get(r["empresa"])
+                            cli_val = cli_id_by_name.get(r["cliente"])
+                            status_val = status_id_by_name.get(r["status"])
+                            
                             run_sql(
                                 """
                                 UPDATE processo
@@ -340,9 +344,9 @@ def render_admin():
                                 """,
                                 (
                                     norm_upper(r["referencia"]),
-                                    int(emp_id_by_name[r["empresa"]]),
-                                    int(cli_id_by_name[r["cliente"]]),
-                                    int(status_id_by_name[r["status"]]),
+                                    int(emp_val) if emp_val is not None else None,
+                                    int(cli_val) if cli_val is not None else None,
+                                    int(status_val) if status_val is not None else None,
                                     r["data_registro"],
                                     (r["di"] or None),
                                     (r["canal"] or None),
@@ -456,6 +460,9 @@ def render_admin():
 
                         upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
                         for _, r in upd.iterrows():
+                            emp_val = emp_id_by_name.get(r["empresa"])
+                            banco_val = banco_id_by_code.get(r["banco"])
+                            
                             run_sql(
                                 """
                                 UPDATE conta_bancaria
@@ -469,8 +476,8 @@ def render_admin():
                                 WHERE id=%s
                                 """,
                                 (
-                                    int(emp_id_by_name[r["empresa"]]),
-                                    int(banco_id_by_code[r["banco"]]),
+                                    int(emp_val) if emp_val is not None else None,
+                                    int(banco_val) if banco_val is not None else None,
                                     (r["apelido"] or None),
                                     (r["agencia"] or None),
                                     (r["numero"] or None),
