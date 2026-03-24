@@ -21,7 +21,7 @@ def get_nome_usuario() -> str:
 
 
 # 1) Page config
-st.set_page_config(page_title="Treecomex • Conciliação", layout="wide")
+st.set_page_config(page_title="HURR PARTICIPAÇÕES • Conciliação", layout="wide")
 
 # 2. Inclusão da Logo na parte superior esquerda (Sidebar)
 # Substitua 'logo.png' pelo caminho real do seu arquivo ou uma URL
@@ -29,7 +29,7 @@ try:
     st.sidebar.image("assets/logo.png", width="stretch")
 except:
     # Caso a imagem não seja encontrada, exibe o nome para não quebrar o código
-    st.sidebar.subheader("Treecomex")
+    st.sidebar.subheader("HURR PARTICIPAÇÕES")
 
 st.markdown(
     """
@@ -42,6 +42,13 @@ st.markdown(
         /* Ajuste fino: remove espaço extra no topo da sidebar */
         section[data-testid="stSidebar"] > div:first-child {
             padding-top: 1rem;
+        }
+
+        /* Fundo customizado para o espaço da logo na sidebar */
+        [data-testid="stSidebar"] [data-testid="stImage"] {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 8px;
         }
     </style>
     """,
@@ -101,7 +108,7 @@ if not st.session_state.get("is_admin"):
 
 
 # 5) UI
-st.title("Treecomex • Sistema Integrado (Fase 1)")
+st.title("HURR PARTICIPAÇÕES • Sistema Integrado (Fase 1)")
 
 PAGES = [
     "Cadastros",

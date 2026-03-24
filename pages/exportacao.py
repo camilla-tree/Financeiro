@@ -136,7 +136,7 @@ def render_exportacao():
                     buffer_zip = BytesIO()
                     with zipfile.ZipFile(buffer_zip, "w", zipfile.ZIP_DEFLATED) as zip_file:
                         for emp_name, group_df in df_exibir.groupby("Empresa"):
-                            pdf_bytes = gerar_pdf_treecomex(group_df, titulo=f"{fc} - {emp_name}",
+                            pdf_bytes = gerar_pdf_hurr(group_df, titulo=f"{fc} - {emp_name}",
                                 saldo_inicial=sal_ini, is_cliente=True)
                             zip_file.writestr(f"Relatorio_{fc}_{emp_name}.pdf", pdf_bytes)
                     
@@ -148,7 +148,7 @@ def render_exportacao():
                     )
             else:
                 if st.button(f"📄 Gerar Relatório", width="stretch"):
-                    pdf_bytes = gerar_pdf_treecomex(df_exibir, titulo=f"{st.session_state['filtro_atual']}",
+                    pdf_bytes = gerar_pdf_hurr(df_exibir, titulo=f"{st.session_state['filtro_atual']}",
                         saldo_inicial=sal_ini, is_cliente=is_cliente_mode)
                     st.download_button(
                         label="⬇️ Download PDF Pronto",
@@ -163,7 +163,7 @@ def render_exportacao():
                 df_licitacao = df_exibir[df_exibir['Categoria'].astype(str).str.contains('Licitação', case=False, na=False)]
                 
                 if not df_licitacao.empty:
-                    pdf_bytes = gerar_pdf_treecomex(df_licitacao, titulo=f"Relatório Licitação - {st.session_state['filtro_atual']}")
+                    pdf_bytes = gerar_pdf_hurr(df_licitacao, titulo=f"Relatório Licitação - {st.session_state['filtro_atual']}")
                     st.download_button(
                         label="⬇️ Download PDF Licitação",
                         data=pdf_bytes,
@@ -178,7 +178,7 @@ def render_exportacao():
 
 
 # --- FUNÇÃO PDF AJUSTADA PARA NOVA COLUNA ---
-def gerar_pdf_treecomex(df, titulo="Relatório", saldo_inicial=0.0, is_cliente=False):
+def gerar_pdf_hurr(df, titulo="Relatório", saldo_inicial=0.0, is_cliente=False):
     buffer = BytesIO()
     # Margens menores para caber mais colunas
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=5*mm, leftMargin=5*mm, topMargin=10*mm, bottomMargin=10*mm)
@@ -191,7 +191,7 @@ def gerar_pdf_treecomex(df, titulo="Relatório", saldo_inicial=0.0, is_cliente=F
         logo = Image("assets/logo.png", width=40*mm, height=15*mm)
         logo.hAlign = 'RIGHT'
     except:
-        logo = Paragraph("Treecomex", styles['Normal'])
+        logo = Paragraph("HURR PARTICIPAÇÕES", styles['Normal'])
 
     if is_cliente:
         saldo_atual = float(df["Saldo"].iloc[-1]) if not df.empty else saldo_inicial
@@ -258,8 +258,8 @@ def gerar_pdf_treecomex(df, titulo="Relatório", saldo_inicial=0.0, is_cliente=F
     
     t = Table(lista_dados, colWidths=col_widths, repeatRows=1)
     t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#58A6D8")),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#ffbd59")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 6.5), # Fonte reduzida
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),

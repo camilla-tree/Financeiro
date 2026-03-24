@@ -20,7 +20,7 @@ def require_access():
     if st.session_state.get("auth_ok"):
         return
 
-    st.title("Treecomex • Acesso")
+    st.title("HURR PARTICIPAÇÕES • Acesso")
 
     key = st.text_input(
         "Chave de acesso (12 caracteres)",

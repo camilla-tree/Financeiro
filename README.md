@@ -1,8 +1,7 @@
-# Treecomex • Sistema Integrado (Fase 1)
+# HURR PARTICIPAÇÕES • Sistema Integrado (Fase 1)
 
-Sistema web desenvolvido para apoiar a **gestão financeira operacional** da Treecomex, com foco em **importação de extratos bancários, conciliação manual, relatórios por cliente e auditoria básica**.
-
-Este projeto foi construído com **Streamlit + PostgreSQL (Supabase)**, priorizando rapidez de entrega, rastreabilidade e clareza para uso interno e apresentações.
+Sistema web desenvolvido para apoiar a **gestão financeira operacional** da HURR PARTICIPAÇÕES, com foco em **importação de extratos bancários, conciliação manual, relatórios por cliente e auditoria básica**.
+O backend usa Python (Streamlit) e PostgreSQL (visão de tabelas otimizada e normalizada).ndo rapidez de entrega, rastreabilidade e clareza para uso interno e apresentações.
 
 ---
 
