@@ -334,11 +334,34 @@ def render_fechamento():
 
     with col_tax:
         st.markdown("#### 🏛️ Totais de Impostos")
-        t_ii = memoria.get("ii_brl", 0.0)
-        t_ipi = memoria.get("ipi_brl", 0.0)
-        t_pis = memoria.get("pis_brl", 0.0)
-        t_cofins = memoria.get("cofins_brl", 0.0)
-        t_icms = memoria.get("icms_brl", 0.0)
+        
+        c_tax_v, c_tax_p = st.columns([1.5, 1])
+        
+        t_ii_val = memoria.get("ii_brl", 0.0)
+        t_ipi_val = memoria.get("ipi_brl", 0.0)
+        t_pis_val = memoria.get("pis_brl", 0.0)
+        t_cof_val = memoria.get("cofins_brl", 0.0)
+        t_icms_val = memoria.get("icms_brl", 0.0)
+
+        pct_ii = (t_ii_val / v_cif_brl * 100) if v_cif_brl > 0 else 0.0
+        pct_ipi = (t_ipi_val / (t_ii_val + v_cif_brl) * 100) if (t_ii_val + v_cif_brl) > 0 else 0.0
+        pct_pis = (t_pis_val / v_cif_brl * 100) if v_cif_brl > 0 else 0.0
+        pct_cofins = (t_cof_val / v_cif_brl * 100) if v_cif_brl > 0 else 0.0
+        pct_icms = (t_icms_val / v_cif_brl * 100) if v_cif_brl > 0 else 0.0
+
+        with c_tax_v:
+            t_ii = st.number_input("I.I. (R$)", value=t_ii_val, format="%.2f", disabled=True)
+            t_ipi = st.number_input("I.P.I. (R$)", value=t_ipi_val, format="%.2f", disabled=True)
+            t_pis = st.number_input("P.I.S. (R$)", value=t_pis_val, format="%.2f", disabled=True)
+            t_cofins = st.number_input("COFINS (R$)", value=t_cof_val, format="%.2f", disabled=True)
+            t_icms = st.number_input("I.C.M.S. (R$)", value=t_icms_val, format="%.2f", disabled=True)
+
+        with c_tax_p:
+            st.text_input("I.I. (%)", value=f"{pct_ii:.2f}%", disabled=True)
+            st.text_input("I.P.I. (%)", value=f"{pct_ipi:.2f}%", disabled=True)
+            st.text_input("P.I.S. (%)", value=f"{pct_pis:.2f}%", disabled=True)
+            st.text_input("COFINS (%)", value=f"{pct_cofins:.2f}%", disabled=True)
+            st.text_input("I.C.M.S. (%)", value=f"{pct_icms:.2f}%", disabled=True)
 
         total_impostos = t_ii + t_ipi + t_pis + t_cofins + t_icms
         total_geral_brl = v_cif_brl + total_impostos
@@ -346,7 +369,7 @@ def render_fechamento():
 
     with col_usd:
         st.markdown("#### 🇺🇸 Conversão (USD)")
-        taxa = st.number_input("Taxa de Conversão", min_value=0.0, value=1.0, step=0.0001, format="%.4f")
+        taxa = st.number_input("Taxa de Conversão", min_value=0.0, value=5.5, step=0.0001, format="%.4f")
         usd_cfr = (v_fob_brl + v_frete_brl + v_adic_brl) / taxa if taxa > 0 else 0.0
         st.metric("TOTAL CFR (USD)", f"$ {usd_cfr:,.2f}")
 
