@@ -35,10 +35,11 @@ def _new_conn() -> psycopg.Connection:
 
     try:
         # tentativa 1: com options
-        conn = psycopg.connect(url, prepare_threshold=0, options="-c plan_cache_mode=force_generic_plan")
+        conn = psycopg.connect(url, prepare_threshold=None, options="-c plan_cache_mode=force_generic_plan")
     except TypeError:
         # tentativa 2: ambiente que não aceita "options"
-        conn = psycopg.connect(url, prepare_threshold=0)
+        # O Supabase Transaction Pooler (PgBouncer) requer prepare_threshold=None
+        conn = psycopg.connect(url, prepare_threshold=None)
 
     try:
         with conn.cursor() as cur:
