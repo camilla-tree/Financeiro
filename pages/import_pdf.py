@@ -302,7 +302,7 @@ def _normalize_transacoes_for_db(transacoes: list[dict]) -> list[dict]:
 
 
 def render_import_pdf():
-    st.subheader("Importar Extrato (PDF/CSV)")
+    st.subheader("Importar Extrato")
 
     df_emp = fetch_df_cached("SELECT id, nome FROM empresa ORDER BY nome")
     if df_emp.empty:
@@ -495,22 +495,9 @@ def render_import_pdf():
     with col2:
         st.markdown("### Resumo")
         st.metric("Empresa", prev.get("emp_nome", emp_nome))
-        st.metric("Conta ID", prev.get("conta_bancaria_id", conta_bancaria_id))
         st.metric("Banco", prev.get("banco_codigo", banco_codigo))
         st.metric("Formato", origem_formato)
-        st.metric("Linhas raw", len(raw_lines) if raw_lines else 0)
         st.metric("Transações", len(transacoes) if transacoes else 0)
-        if df is not None and not df.empty:
-            if "valor" in df.columns:
-                try:
-                    st.metric("Soma valores", float(pd.to_numeric(df["valor"], errors="coerce").fillna(0).sum()))
-                except Exception:
-                    pass
-            if "saldo" in df.columns:
-                try:
-                    st.metric("Qtd com saldo", int(df["saldo"].notna().sum()))
-                except Exception:
-                    pass
 
     # =========================
     # Etapa 2: Confirmar importação (grava no banco)

@@ -113,7 +113,7 @@ st.title("HURR PARTICIPAÇÕES • Sistema Integrado (Fase 1)")
 
 PAGES = [
     "Cadastros",
-    "Importar Extrato PDF",
+    "Importar Extrato",
     "Gerenciamento de Extratos",
     "Conciliação",
     "Relatórios de Cliente",
@@ -152,7 +152,7 @@ if page == "Cadastros":
     render_admin()
 elif page == "Admin Usuários":
     render_admin_usuarios()
-elif page == "Importar Extrato PDF":
+elif page == "Importar Extrato":
     render_import_pdf()
 elif page == "Conciliação":
     render_conciliacao()
