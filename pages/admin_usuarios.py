@@ -12,7 +12,7 @@ TELAS = [
     "Importar Extrato",
     "Gerenciamento de Extratos",
     "Conciliação",
-    "Relatórios de Cliente",
+    "Relatórios",
     "Fechamento",
     "Admin Usuários",
 ]

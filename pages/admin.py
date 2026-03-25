@@ -71,10 +71,8 @@ def render_admin():
     # EMPRESA
     # =========================
     with tabs[1]:
-        colA, colB = st.columns([1, 2])
 
-        with colA:
-            st.markdown("### Nova empresa")
+        with st.expander("Nova empresa", expanded=False):
             nome = st.text_input("nome*", key="emp_nome")
             cnpj = st.text_input("cnpj (opcional)", key="emp_cnpj")
             ativa = st.checkbox("ativa", value=True, key="emp_ativa")
@@ -103,63 +101,60 @@ def render_admin():
                         st.warning("Já existe uma empresa com esse NOME e/ou CNPJ. Verifique antes de cadastrar.")
 
 
-        with colB:
-            st.markdown("### Empresas (edite inline e clique em salvar)")
-            df = fetch_df_cached("SELECT id, nome, cnpj, situacao, diretor FROM empresa ORDER BY nome")
-            df["ativa"] = df["situacao"].fillna("INATIVA").str.upper().eq("ATIVA")
+        st.markdown("### Empresas (edite inline e clique em salvar)")
+        df = fetch_df_cached("SELECT id, nome, cnpj, situacao, diretor FROM empresa ORDER BY nome")
+        df["ativa"] = df["situacao"].fillna("INATIVA").str.upper().eq("ATIVA")
 
-            view = df.drop(columns=["situacao"]).copy()  # tira texto
-            edited = _editor_with_delete(view, key="emp_editor")
-
-
-            if edited is not None and st.button("Salvar alterações", key="emp_save"):
-                ids_delete = edited.loc[edited["_delete"] == True, "id"].tolist()
-                for _id in ids_delete:
-                    _id = int(_id)
-                    if _safe_delete("DELETE FROM empresa WHERE id=%s", (_id,), "a empresa", _id):
-                        log_action("DELETE", "empresa", _id)
+        view = df.drop(columns=["situacao"]).copy()  # tira texto
+        edited = _editor_with_delete(view, key="emp_editor")
 
 
-                upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
-                view_dict = view.set_index("id").to_dict(orient="index")
-                for _, r in upd.iterrows():
-                    r_id = int(r["id"])
-                    orig = view_dict.get(r_id)
-                    if not _row_changed(r, orig, view.columns):
-                        continue
+        if edited is not None and st.button("Salvar alterações", key="emp_save"):
+            ids_delete = edited.loc[edited["_delete"] == True, "id"].tolist()
+            for _id in ids_delete:
+                _id = int(_id)
+                if _safe_delete("DELETE FROM empresa WHERE id=%s", (_id,), "a empresa", _id):
+                    log_action("DELETE", "empresa", _id)
+
+
+            upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
+            view_dict = view.set_index("id").to_dict(orient="index")
+            for _, r in upd.iterrows():
+                r_id = int(r["id"])
+                orig = view_dict.get(r_id)
+                if not _row_changed(r, orig, view.columns):
+                    continue
                     
-                    try:
-                        run_sql(
-                            """
-                            UPDATE empresa
-                            SET nome=%s, cnpj=%s, situacao=%s, diretor=%s
-                            WHERE id=%s
-                            """,
-                            (
-                                norm_upper(r["nome"]),
-                                (r["cnpj"] or None),
-                                ("ATIVA" if bool(r["ativa"]) else "INATIVA"),
-                                (r["diretor"] or None),
-                                int(r["id"]),
-                            )
+                try:
+                    run_sql(
+                        """
+                        UPDATE empresa
+                        SET nome=%s, cnpj=%s, situacao=%s, diretor=%s
+                        WHERE id=%s
+                        """,
+                        (
+                            norm_upper(r["nome"]),
+                            (r["cnpj"] or None),
+                            ("ATIVA" if bool(r["ativa"]) else "INATIVA"),
+                            (r["diretor"] or None),
+                            int(r["id"]),
                         )
-                        log_action("UPDATE", "empresa", int(r["id"]), {"nome": r["nome"], "cnpj": r["cnpj"], "situacao": ("ATIVA" if bool(r["ativa"]) else "INATIVA"), "diretor": r["diretor"]})
-                    except psycopg.errors.UniqueViolation:
-                            st.warning(f"Não foi possível atualizar a empresa id={int(r['id'])}. "                                "Já existe outra empresa com esse NOME e/ou CNPJ."
-                                       "Já existe outra empresa com esse NOME e/ou CNPJ."
-                            )
-                st.success("Alterações aplicadas.")
-                st.cache_data.clear()
-                st.rerun()
+                    )
+                    log_action("UPDATE", "empresa", int(r["id"]), {"nome": r["nome"], "cnpj": r["cnpj"], "situacao": ("ATIVA" if bool(r["ativa"]) else "INATIVA"), "diretor": r["diretor"]})
+                except psycopg.errors.UniqueViolation:
+                        st.warning(f"Não foi possível atualizar a empresa id={int(r['id'])}. "                                "Já existe outra empresa com esse NOME e/ou CNPJ."
+                                   "Já existe outra empresa com esse NOME e/ou CNPJ."
+                        )
+            st.success("Alterações aplicadas.")
+            st.cache_data.clear()
+            st.rerun()
 
     # =========================
     # CLIENTE (SEM CNPJ)
     # =========================
     with tabs[2]:
-        colA, colB = st.columns([1, 2])
 
-        with colA:
-            st.markdown("### Novo cliente")
+        with st.expander("Novo cliente", expanded=False):
             nome = st.text_input("nome*", key="cli_nome")
             dt_inicio = st.date_input("dt_inicio_contrato", value=date.today(), key="cli_dt")
             ativo = st.checkbox("ativo", value=True, key="cli_ativo")
@@ -185,40 +180,39 @@ def render_admin():
                         st.warning("Já existe um cliente com esse NOME. Verifique antes de cadastrar.")
 
 
-        with colB:
-            st.markdown("### Clientes (edite inline e clique em salvar)")
-            df = fetch_df_cached("SELECT id, nome, dt_inicio_contrato, ativo FROM cliente ORDER BY nome")
-            edited = _editor_with_delete(df, key="cli_editor")
+        st.markdown("### Clientes (edite inline e clique em salvar)")
+        df = fetch_df_cached("SELECT id, nome, dt_inicio_contrato, ativo FROM cliente ORDER BY nome")
+        edited = _editor_with_delete(df, key="cli_editor")
 
-            if edited is not None and st.button("Salvar alterações", key="cli_save"):
-                ids_delete = edited.loc[edited["_delete"] == True, "id"].tolist()
-                for _id in ids_delete:
-                    _id = int(_id)
-                    if _safe_delete("DELETE FROM cliente WHERE id=%s", (_id,), "o cliente", _id):
-                        log_action("DELETE", "cliente", _id)
+        if edited is not None and st.button("Salvar alterações", key="cli_save"):
+            ids_delete = edited.loc[edited["_delete"] == True, "id"].tolist()
+            for _id in ids_delete:
+                _id = int(_id)
+                if _safe_delete("DELETE FROM cliente WHERE id=%s", (_id,), "o cliente", _id):
+                    log_action("DELETE", "cliente", _id)
 
 
-                upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
-                view_dict = df.set_index("id").to_dict(orient="index")
-                for _, r in upd.iterrows():
-                    r_id = int(r["id"])
-                    orig = view_dict.get(r_id)
-                    if not _row_changed(r, orig, df.columns):
-                        continue
+            upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
+            view_dict = df.set_index("id").to_dict(orient="index")
+            for _, r in upd.iterrows():
+                r_id = int(r["id"])
+                orig = view_dict.get(r_id)
+                if not _row_changed(r, orig, df.columns):
+                    continue
                     
-                    run_sql(
-                        """
-                        UPDATE cliente
-                        SET nome=%s, dt_inicio_contrato=%s, ativo=%s
-                        WHERE id=%s
-                        """,
-                        (norm_upper(r["nome"]), r["dt_inicio_contrato"], bool(r["ativo"]), int(r["id"])),
-                    )
-                    log_action("UPDATE", "cliente", int(r["id"]), {"nome": r["nome"], "dt_inicio_contrato": str(r["dt_inicio_contrato"]), "ativo": bool(r["ativo"])})
+                run_sql(
+                    """
+                    UPDATE cliente
+                    SET nome=%s, dt_inicio_contrato=%s, ativo=%s
+                    WHERE id=%s
+                    """,
+                    (norm_upper(r["nome"]), r["dt_inicio_contrato"], bool(r["ativo"]), int(r["id"])),
+                )
+                log_action("UPDATE", "cliente", int(r["id"]), {"nome": r["nome"], "dt_inicio_contrato": str(r["dt_inicio_contrato"]), "ativo": bool(r["ativo"])})
 
-                st.success("Alterações aplicadas.")
-                st.cache_data.clear()
-                st.rerun()
+            st.success("Alterações aplicadas.")
+            st.cache_data.clear()
+            st.rerun()
 
     # =========================
     # PROCESSO
@@ -243,10 +237,8 @@ def render_admin():
             cli_name_by_id = dict(zip(df_cli["id"], df_cli["nome"]))
             status_name_by_id = dict(zip(df_status["id"], df_status["nome"]))
 
-            colA, colB = st.columns([1, 2])
 
-            with colA:
-                st.markdown("### Novo processo")
+            with st.expander("Novo processo", expanded=False):
                 referencia = st.text_input("referencia*", key="p_ref")
                 emp_nome = st.selectbox("empresa*", emp_names, key="p_emp")
                 cli_nome = st.selectbox("cliente*", cli_names, key="p_cli")
@@ -299,109 +291,108 @@ def render_admin():
                             st.warning("Já existe um processo com essa REFERÊNCIA (possivelmente para essa empresa/cliente).")
 
 
-            with colB:
-                st.markdown("### Processos (edite inline e clique em salvar)")
-                df = fetch_df_cached(
-                    """
-                    SELECT
-                      p.id,
-                      p.referencia,
-                      p.empresa_id,
-                      p.cliente_id,
-                      p.status_id,
-                      p.data_registro,
-                      p.di,
-                      p.canal,
-                      p.bl,
-                      p.invoice,
-                      p.observacao
-                    FROM processo p
-                    ORDER BY p.id DESC
-                    LIMIT 300
-                    """
+            st.markdown("### Processos (edite inline e clique em salvar)")
+            df = fetch_df_cached(
+                """
+                SELECT
+                  p.id,
+                  p.referencia,
+                  p.empresa_id,
+                  p.cliente_id,
+                  p.status_id,
+                  p.data_registro,
+                  p.di,
+                  p.canal,
+                  p.bl,
+                  p.invoice,
+                  p.observacao
+                FROM processo p
+                ORDER BY p.id DESC
+                LIMIT 300
+                """
+            )
+
+            if df.empty:
+                st.info("Sem processos.")
+            else:
+                df["empresa"] = df["empresa_id"].map(emp_name_by_id)
+                df["cliente"] = df["cliente_id"].map(cli_name_by_id)
+                df["status"] = df["status_id"].map(status_name_by_id).fillna("ABERTO")
+
+                view = df[
+                    ["id", "referencia", "empresa", "cliente", "status",
+                     "data_registro", "di", "canal", "bl", "invoice", "observacao"]
+                ].copy()
+
+                edited = _editor_with_delete(
+                    view,
+                    key="proc_editor",
+                    extra_column_config={
+                        "empresa": st.column_config.SelectboxColumn("empresa", options=emp_names),
+                        "cliente": st.column_config.SelectboxColumn("cliente", options=cli_names),
+                        "status": st.column_config.SelectboxColumn("status", options=status_names),
+                    },
                 )
 
-                if df.empty:
-                    st.info("Sem processos.")
-                else:
-                    df["empresa"] = df["empresa_id"].map(emp_name_by_id)
-                    df["cliente"] = df["cliente_id"].map(cli_name_by_id)
-                    df["status"] = df["status_id"].map(status_name_by_id).fillna("ABERTO")
-
-                    view = df[
-                        ["id", "referencia", "empresa", "cliente", "status",
-                         "data_registro", "di", "canal", "bl", "invoice", "observacao"]
-                    ].copy()
-
-                    edited = _editor_with_delete(
-                        view,
-                        key="proc_editor",
-                        extra_column_config={
-                            "empresa": st.column_config.SelectboxColumn("empresa", options=emp_names),
-                            "cliente": st.column_config.SelectboxColumn("cliente", options=cli_names),
-                            "status": st.column_config.SelectboxColumn("status", options=status_names),
-                        },
-                    )
-
-                    if edited is not None and st.button("Salvar alterações", key="proc_save"):
-                        ids_delete = edited.loc[edited["_delete"] == True, "id"].tolist()
-                        for _id in ids_delete:
-                            _id = int(_id)
-                            if _safe_delete("DELETE FROM processo WHERE id=%s", (_id,), "o processo", _id):
-                                log_action("DELETE", "processo", _id)
+                if edited is not None and st.button("Salvar alterações", key="proc_save"):
+                    ids_delete = edited.loc[edited["_delete"] == True, "id"].tolist()
+                    for _id in ids_delete:
+                        _id = int(_id)
+                        if _safe_delete("DELETE FROM processo WHERE id=%s", (_id,), "o processo", _id):
+                            log_action("DELETE", "processo", _id)
 
 
-                        upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
-                        view_dict = view.set_index("id").to_dict(orient="index")
-                        for _, r in upd.iterrows():
-                            r_id = int(r["id"])
-                            orig = view_dict.get(r_id)
-                            if not _row_changed(r, orig, view.columns):
-                                continue
+                    upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
+                    view_dict = view.set_index("id").to_dict(orient="index")
+                    for _, r in upd.iterrows():
+                        r_id = int(r["id"])
+                        orig = view_dict.get(r_id)
+                        if not _row_changed(r, orig, view.columns):
+                            continue
                                 
-                            emp_val = emp_id_by_name.get(r["empresa"])
-                            cli_val = cli_id_by_name.get(r["cliente"])
+                        emp_val = emp_id_by_name.get(r["empresa"])
+                        cli_val = cli_id_by_name.get(r["cliente"])
                             
-                            status_raw = r["status"]
-                            if pd.isna(status_raw) or str(status_raw).strip() == "":
-                                status_raw = "ABERTO"
-                            status_val = status_id_by_name.get(status_raw)
+                        status_raw = r["status"]
+                        if pd.isna(status_raw) or str(status_raw).strip() == "":
+                            status_raw = "ABERTO"
+                        status_val = status_id_by_name.get(status_raw)
                             
-                            run_sql(
-                                """
-                                UPDATE processo
-                                SET
-                                  referencia=%s,
-                                  empresa_id=%s,
-                                  cliente_id=%s,
-                                  status_id=%s,
-                                  data_registro=%s,
-                                  di=%s,
-                                  canal=%s,
-                                  bl=%s,
-                                  invoice=%s,
-                                  observacao=%s
-                                WHERE id=%s
-                                """,
-                                (
-                                    norm_upper(r["referencia"]),
-                                    int(emp_val) if emp_val is not None else None,
-                                    int(cli_val) if cli_val is not None else None,
-                                    int(status_val) if status_val is not None else None,
-                                    r["data_registro"],
-                                    (r["di"] or None),
-                                    (r["canal"] or None),
-                                    (r["bl"] or None),
-                                    (r["invoice"] or None),
-                                    (r["observacao"] or None),
-                                    int(r["id"]),
-                                ),
-                            )
-                            log_action("UPDATE", "processo", int(r["id"]), {"referencia": r["referencia"], "empresa": r["empresa"], "cliente": r["cliente"], "status": status_raw})
+                        run_sql(
+                            """
+                            UPDATE processo
+                            SET
+                              referencia=%s,
+                              empresa_id=%s,
+                              cliente_id=%s,
+                              status_id=%s,
+                              data_registro=%s,
+                              di=%s,
+                              canal=%s,
+                              bl=%s,
+                              invoice=%s,
+                              observacao=%s
+                            WHERE id=%s
+                            """,
+                            (
+                                norm_upper(r["referencia"]),
+                                int(emp_val) if emp_val is not None else None,
+                                int(cli_val) if cli_val is not None else None,
+                                int(status_val) if status_val is not None else None,
+                                r["data_registro"],
+                                (r["di"] or None),
+                                (r["canal"] or None),
+                                (r["bl"] or None),
+                                (r["invoice"] or None),
+                                (r["observacao"] or None),
+                                int(r["id"]),
+                            ),
+                        )
+                        log_action("UPDATE", "processo", int(r["id"]), {"referencia": r["referencia"], "empresa": r["empresa"], "cliente": r["cliente"], "status": status_raw})
 
-                        st.success("Alterações aplicadas.")
-                        st.cache_data.clear()
-                        st.rerun()
+                    st.success("Alterações aplicadas.")
+                    st.cache_data.clear()
+                    st.rerun()
 
     # =========================
     # CONTA BANCÁRIA (numero opcional)
@@ -422,10 +413,8 @@ def render_admin():
             emp_name_by_id = dict(zip(df_emp["id"], df_emp["nome"]))
             banco_code_by_id = dict(zip(df_b["id"], df_b["codigo"]))
 
-            colA, colB = st.columns([1, 2])
 
-            with colA:
-                st.markdown("### Nova conta")
+            with st.expander("Nova conta", expanded=False):
                 emp_nome = st.selectbox("empresa*", emp_names, key="cb_emp")
                 banco_codigo = st.selectbox("banco*", banco_codes, key="cb_banco")
                 apelido = st.text_input("apelido (opcional)", key="cb_apelido")
@@ -457,84 +446,83 @@ def render_admin():
                     except psycopg.errors.UniqueViolation:
                         st.warning("Já existe uma conta bancária com esse BANCO e/ou NÚMERO para essa EMPRESA. Verifique antes de cadastrar.")
 
-            with colB:
-                st.markdown("### Contas (edite inline e clique em salvar)")
-                df = fetch_df_cached(
-                    """
-                    SELECT
-                      cb.id,
-                      cb.empresa_id,
-                      cb.banco_id,
-                      cb.apelido,
-                      cb.agencia,
-                      cb.numero,
-                      cb.ativa
-                    FROM conta_bancaria cb
-                    ORDER BY cb.id DESC
-                    LIMIT 500
-                    """
+            st.markdown("### Contas (edite inline e clique em salvar)")
+            df = fetch_df_cached(
+                """
+                SELECT
+                  cb.id,
+                  cb.empresa_id,
+                  cb.banco_id,
+                  cb.apelido,
+                  cb.agencia,
+                  cb.numero,
+                  cb.ativa
+                FROM conta_bancaria cb
+                ORDER BY cb.id DESC
+                LIMIT 500
+                """
+            )
+
+            if df.empty:
+                st.info("Sem contas.")
+            else:
+                df["empresa"] = df["empresa_id"].map(emp_name_by_id)
+                df["banco"] = df["banco_id"].map(banco_code_by_id)
+
+                view = df[["id", "empresa", "banco", "apelido", "agencia", "numero", "ativa"]].copy()
+
+                edited = _editor_with_delete(
+                    view,
+                    key="cb_editor",
+                    extra_column_config={
+                        "empresa": st.column_config.SelectboxColumn("empresa", options=emp_names),
+                        "banco": st.column_config.SelectboxColumn("banco", options=banco_codes),
+                    },
                 )
 
-                if df.empty:
-                    st.info("Sem contas.")
-                else:
-                    df["empresa"] = df["empresa_id"].map(emp_name_by_id)
-                    df["banco"] = df["banco_id"].map(banco_code_by_id)
-
-                    view = df[["id", "empresa", "banco", "apelido", "agencia", "numero", "ativa"]].copy()
-
-                    edited = _editor_with_delete(
-                        view,
-                        key="cb_editor",
-                        extra_column_config={
-                            "empresa": st.column_config.SelectboxColumn("empresa", options=emp_names),
-                            "banco": st.column_config.SelectboxColumn("banco", options=banco_codes),
-                        },
-                    )
-
-                    if edited is not None and st.button("Salvar alterações", key="cb_save"):
-                        ids_delete = edited.loc[edited["_delete"] == True, "id"].tolist()
-                        for _id in ids_delete:
-                            _id = int(_id)
-                            if _safe_delete("DELETE FROM conta_bancaria WHERE id=%s", (_id,), "a conta bancária", _id):
-                                log_action("DELETE", "conta_bancaria", _id)
+                if edited is not None and st.button("Salvar alterações", key="cb_save"):
+                    ids_delete = edited.loc[edited["_delete"] == True, "id"].tolist()
+                    for _id in ids_delete:
+                        _id = int(_id)
+                        if _safe_delete("DELETE FROM conta_bancaria WHERE id=%s", (_id,), "a conta bancária", _id):
+                            log_action("DELETE", "conta_bancaria", _id)
 
 
-                        upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
-                        view_dict = view.set_index("id").to_dict(orient="index")
-                        for _, r in upd.iterrows():
-                            r_id = int(r["id"])
-                            orig = view_dict.get(r_id)
-                            if not _row_changed(r, orig, view.columns):
-                                continue
+                    upd = edited.loc[edited["_delete"] == False].drop(columns=["_delete"])
+                    view_dict = view.set_index("id").to_dict(orient="index")
+                    for _, r in upd.iterrows():
+                        r_id = int(r["id"])
+                        orig = view_dict.get(r_id)
+                        if not _row_changed(r, orig, view.columns):
+                            continue
                                 
-                            emp_val = emp_id_by_name.get(r["empresa"])
-                            banco_val = banco_id_by_code.get(r["banco"])
+                        emp_val = emp_id_by_name.get(r["empresa"])
+                        banco_val = banco_id_by_code.get(r["banco"])
                             
-                            run_sql(
-                                """
-                                UPDATE conta_bancaria
-                                SET
-                                  empresa_id=%s,
-                                  banco_id=%s,
-                                  apelido=%s,
-                                  agencia=%s,
-                                  numero=%s,
-                                  ativa=%s
-                                WHERE id=%s
-                                """,
-                                (
-                                    int(emp_val) if emp_val is not None else None,
-                                    int(banco_val) if banco_val is not None else None,
-                                    (r["apelido"] or None),
-                                    (r["agencia"] or None),
-                                    (r["numero"] or None),
-                                    bool(r["ativa"]),
-                                    int(r["id"]),
-                                ),
-                            )
-                            log_action("UPDATE", "conta_bancaria", int(r["id"]), {"empresa": r["empresa"], "banco": r["banco"], "apelido": r["apelido"], "agencia": r["agencia"], "numero": r["numero"], "ativa": bool(r["ativa"])})
+                        run_sql(
+                            """
+                            UPDATE conta_bancaria
+                            SET
+                              empresa_id=%s,
+                              banco_id=%s,
+                              apelido=%s,
+                              agencia=%s,
+                              numero=%s,
+                              ativa=%s
+                            WHERE id=%s
+                            """,
+                            (
+                                int(emp_val) if emp_val is not None else None,
+                                int(banco_val) if banco_val is not None else None,
+                                (r["apelido"] or None),
+                                (r["agencia"] or None),
+                                (r["numero"] or None),
+                                bool(r["ativa"]),
+                                int(r["id"]),
+                            ),
+                        )
+                        log_action("UPDATE", "conta_bancaria", int(r["id"]), {"empresa": r["empresa"], "banco": r["banco"], "apelido": r["apelido"], "agencia": r["agencia"], "numero": r["numero"], "ativa": bool(r["ativa"])})
 
-                        st.success("Alterações aplicadas.")
-                        st.cache_data.clear()
-                        st.rerun()
+                    st.success("Alterações aplicadas.")
+                    st.cache_data.clear()
+                    st.rerun()

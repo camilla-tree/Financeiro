@@ -116,7 +116,7 @@ PAGES = [
     "Importar Extrato",
     "Gerenciamento de Extratos",
     "Conciliação",
-    "Relatórios de Cliente",
+    "Relatórios",
     "Fechamento",
     "Admin Usuários",
 ]
@@ -156,7 +156,7 @@ elif page == "Importar Extrato":
     render_import_pdf()
 elif page == "Conciliação":
     render_conciliacao()
-elif page == "Relatórios de Cliente":
+elif page == "Relatórios":
     render_exportacao()
 elif page == "Gerenciamento de Extratos":
     render_gerenciamento_extratos()

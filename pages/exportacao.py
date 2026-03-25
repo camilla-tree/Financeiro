@@ -86,8 +86,12 @@ def render_exportacao():
                 df_resultado["Saldo"] = novo_saldo_col
 
         st.session_state['relatorio_cache'] = df_resultado
-        desc_emp = f" - {selecionado_emp}" if selecionado_emp else ""
-        st.session_state['filtro_atual'] = f"{tipo_filtro}: {selecionado}{desc_emp}"
+        if tipo_filtro == "Cliente":
+            desc_emp = f" Empresa: {selecionado_emp}" if selecionado_emp else ""
+            st.session_state['filtro_atual'] = f"Cliente: {selecionado}{desc_emp}"
+        else:
+            desc_emp = f" - {selecionado_emp}" if selecionado_emp else ""
+            st.session_state['filtro_atual'] = f"{tipo_filtro}: {selecionado}{desc_emp}"
         st.session_state['filtro_cli_emp'] = (selecionado, selecionado_emp)
         st.session_state['saldo_inicial'] = saldo_inicial
         st.session_state['is_cliente_mode'] = (tipo_filtro == "Cliente")
@@ -134,7 +138,8 @@ def render_exportacao():
                     buffer_zip = BytesIO()
                     with zipfile.ZipFile(buffer_zip, "w", zipfile.ZIP_DEFLATED) as zip_file:
                         for emp_name, group_df in df_exibir.groupby("Empresa"):
-                            pdf_bytes = gerar_pdf_hurr(group_df, titulo=f"{fc} - {emp_name}",
+                            titulo_pdf = f"Cliente: {fc} Empresa: {emp_name}"
+                            pdf_bytes = gerar_pdf_hurr(group_df, titulo=titulo_pdf,
                                 saldo_inicial=sal_ini, is_cliente=True)
                             zip_file.writestr(f"Relatorio_{fc}_{emp_name}.pdf", pdf_bytes)
                     
@@ -176,6 +181,15 @@ def render_exportacao():
 
 
 # --- FUNÇÃO PDF AJUSTADA PARA NOVA COLUNA ---
+def formatar_moeda(valor):
+    try:
+        if pd.isna(valor) or valor == '':
+            return "0,00"
+        v = float(valor)
+        return f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except (ValueError, TypeError):
+        return "0,00"
+
 def gerar_pdf_hurr(df, titulo="Relatório", saldo_inicial=0.0, is_cliente=False):
     buffer = BytesIO()
     # Margens menores para caber mais colunas
@@ -203,7 +217,7 @@ def gerar_pdf_hurr(df, titulo="Relatório", saldo_inicial=0.0, is_cliente=False)
             
     header_html = f"""
     <font size="14"><b>{titulo}</b></font><br/>
-    <font size="10">Mês: {mes_str} | Saldo Anterior: R$ {saldo_inicial:,.2f} | Saldo Atual: R$ {saldo_atual:,.2f}</font>
+    <font size="10">Mês: {mes_str} | Saldo Anterior: R$ {formatar_moeda(saldo_inicial)} | Saldo Atual: R$ {formatar_moeda(saldo_atual)}</font>
     """
     titulo_text = Paragraph(header_html, styles['Normal'])
     
@@ -216,7 +230,7 @@ def gerar_pdf_hurr(df, titulo="Relatório", saldo_inicial=0.0, is_cliente=False)
     # Formatação dos Dados
     data_export = df.copy()
     for col in ["Entrada", "Saída", "Saldo"]:
-        data_export[col] = data_export[col].apply(lambda x: f"{float(x):.2f}" if pd.notnull(x) and x != '' else "0.00")
+        data_export[col] = data_export[col].apply(lambda x: formatar_moeda(x))
     
     # Prepara dados para Table
     lista_dados = [data_export.columns.to_list()]
