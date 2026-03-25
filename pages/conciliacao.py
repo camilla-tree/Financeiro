@@ -554,7 +554,6 @@ def render_conciliacao():
         "Data": df_mov["dt_movimento"],
         "Descrição": df_mov["descricao"].astype(str),
         "Valor": df_mov["valor_total"],
-        "Tipo": df_mov["tipo_id"].apply(_tipo_label),
         "Observação": df_mov["observacao"].fillna("").astype(str),
         # Se a linha não tem rateio, repetimos o valor total para não ficar vazio
         "Valor Rateio": df_mov["valor_rateio"].fillna(df_mov["valor_total"]), 
@@ -574,7 +573,6 @@ def render_conciliacao():
             "Data": st.column_config.DateColumn("Data", disabled=True),
             "Descrição": st.column_config.TextColumn("Descrição", disabled=True),
             "Valor": st.column_config.NumberColumn("Valor Total", disabled=True, format="R$ %.2f"),
-            "Tipo": st.column_config.SelectboxColumn("Tipo", options=list(tipo_label_by_id.values()), disabled=True),
             "Observação": st.column_config.TextColumn("Observação"),
             "Valor Rateio": st.column_config.NumberColumn("Valor Rateio", disabled=True, format="R$ %.2f"),
             "Processo": st.column_config.SelectboxColumn("Processo", options=["-"] + processos_ref),

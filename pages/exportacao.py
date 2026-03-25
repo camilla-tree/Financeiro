@@ -43,7 +43,7 @@ def render_exportacao():
             tipo_filtro = st.radio("Filtrar por:", ["Cliente", "Empresa"], key="exp_tipo")
 
         with col_select:
-            saldo_inicial = 0.0
+            saldo_inicial = st.number_input("Saldo Inicial", value=0.00, step=100.0)
             selecionado_emp = None
             if tipo_filtro == "Cliente":
                 opcoes = ["Todos"] + get_lista_clientes()
@@ -53,8 +53,6 @@ def render_exportacao():
                     selecionado_emp = st.selectbox("Selecione a Empresa", opcoes_emp)
                 else:
                     selecionado_emp = None
-                
-                saldo_inicial = st.number_input("Saldo Inicial", value=0.00, step=100.0)
             else:
                 opcoes = ["Todas"] + get_lista_empresas()
                 selecionado = st.selectbox("Selecione a Empresa", opcoes)
@@ -64,9 +62,9 @@ def render_exportacao():
     if st.button("Buscar Dados", width="stretch"):
         df_resultado = get_dados_relatorio_filtrado(dt_inicio, dt_fim, tipo_filtro, selecionado, selecionado_emp)
         
-        # Calculate running Saldo if Cliente
-        if tipo_filtro == "Cliente" and not df_resultado.empty:
-            if selecionado_emp == "Todas":
+        # Calculate running Saldo
+        if not df_resultado.empty:
+            if (tipo_filtro == "Cliente" and selecionado_emp == "Todas") or (tipo_filtro == "Empresa" and selecionado == "Todas"):
                 # Separa saldo por empresa
                 novo_saldo_col = []
                 saldos_atuais = {} 
@@ -100,7 +98,7 @@ def render_exportacao():
     if not df.empty:
         # --- DEFINIÇÃO DAS COLUNAS PARA EXIBIÇÃO ---
         # Adicionamos "Empresa" no início
-        cols_view = ["Empresa", "Banco", "Data", "Movimentação", "Descrição", "Tipo", "Categoria", "Entrada", "Saída", "Saldo"]
+        cols_view = ["Empresa", "Banco", "Data", "Movimentação", "Descrição", "Categoria", "Entrada", "Saída", "Saldo"]
         
         # Garante integridade das colunas
         for col in cols_view:
@@ -193,24 +191,21 @@ def gerar_pdf_hurr(df, titulo="Relatório", saldo_inicial=0.0, is_cliente=False)
     except:
         logo = Paragraph("HURR PARTICIPAÇÕES", styles['Normal'])
 
-    if is_cliente:
-        saldo_atual = float(df["Saldo"].iloc[-1]) if not df.empty else saldo_inicial
-        
-        mes_str = ""
-        if not df.empty and pd.notnull(df["Data"].iloc[0]):
-            try:
-                dt_obj = pd.to_datetime(df["Data"].iloc[0])
-                mes_str = dt_obj.strftime("%m/%Y")
-            except:
-                pass
-                
-        header_html = f"""
-        <font size="14"><b>{titulo}</b></font><br/>
-        <font size="10">Mês: {mes_str} | Saldo Anterior: R$ {saldo_inicial:,.2f} | Saldo Atual: R$ {saldo_atual:,.2f}</font>
-        """
-        titulo_text = Paragraph(header_html, styles['Normal'])
-    else:
-        titulo_text = Paragraph(titulo, styles['Title'])
+    saldo_atual = float(df["Saldo"].iloc[-1]) if not df.empty and "Saldo" in df.columns else saldo_inicial
+    
+    mes_str = ""
+    if not df.empty and pd.notnull(df["Data"].iloc[0]):
+        try:
+            dt_obj = pd.to_datetime(df["Data"].iloc[0])
+            mes_str = dt_obj.strftime("%m/%Y")
+        except:
+            pass
+            
+    header_html = f"""
+    <font size="14"><b>{titulo}</b></font><br/>
+    <font size="10">Mês: {mes_str} | Saldo Anterior: R$ {saldo_inicial:,.2f} | Saldo Atual: R$ {saldo_atual:,.2f}</font>
+    """
+    titulo_text = Paragraph(header_html, styles['Normal'])
     
     data_header = [[titulo_text, logo]]
     t_header = Table(data_header, colWidths=[200*mm, 80*mm])
@@ -241,19 +236,18 @@ def gerar_pdf_hurr(df, titulo="Relatório", saldo_inicial=0.0, is_cliente=False)
         lista_dados.append(linha)
 
     # --- NOVAS LARGURAS (Total Disponível ~285mm) ---
-    # [Empresa, Banco, Data, Movimentação, Descrição, Tipo, Categoria, Entrada, Saída, Saldo]
-    # Ajustei diminuindo um pouco cada uma para caber a Empresa
+    # [Empresa, Banco, Data, Movimentação, Descrição, Categoria, Entrada, Saída, Saldo]
+    # Ajustei distribuindo a largura que era do Tipo
     col_widths = [
-        20*mm,  # Empresa (curto)
-        25*mm,  # Banco
-        22*mm,  # Data
-        38*mm,  # Movimentação (reduzido levemente)
-        45*mm,  # Descrição (reduzido levemente)
-        15*mm,  # Tipo (C/D curto)
-        25*mm,  # Categoria
-        22*mm,  # Entrada
-        22*mm,  # Saída
-        22*mm   # Saldo
+        25*mm,  # Empresa 
+        28*mm,  # Banco
+        24*mm,  # Data
+        42*mm,  # Movimentação 
+        53*mm,  # Descrição
+        28*mm,  # Categoria
+        24*mm,  # Entrada
+        24*mm,  # Saída
+        24*mm   # Saldo
     ]
     
     t = Table(lista_dados, colWidths=col_widths, repeatRows=1)
