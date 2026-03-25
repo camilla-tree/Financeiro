@@ -170,13 +170,7 @@ def render_conciliacao():
     # =========================
     # Dados de Apoio
     # =========================
-    df_user = fetch_df_cached("SELECT id, nome FROM usuario WHERE ativo=true ORDER BY nome")
     usuario_id = None
-    if not df_user.empty:
-        opt_u = ["(Sem usuário)"] + df_user["nome"].tolist()
-        u = st.selectbox("Usuário (para auditoria/confirm)", opt_u, index=0, key="conc_user")
-        if u != "(Sem usuário)":
-            usuario_id = int(df_user[df_user["nome"] == u]["id"].iloc[0])
 
     st_confirmada = get_status_id("CONFIRMADA")
 
@@ -195,15 +189,6 @@ def render_conciliacao():
  
     clientes = sorted(df_processos["cliente"].dropna().unique().tolist()) if not df_processos.empty else []
     processos_ref = sorted(df_processos["referencia"].dropna().unique().tolist()) if not df_processos.empty else []
-
-    cliente_opt = ["(Todos)"] + clientes
-    proc_opt = ["(Todos)"] + processos_ref
-
-    colX, colY = st.columns([2, 2])
-    with colX:
-        cliente_pick = st.selectbox("Cliente", cliente_opt, key="conc_cliente")
-    with colY:
-        processo_pick = st.selectbox("Processo", proc_opt, key="conc_processo")
 
     # =========================================================================
     # 1) Categorias Financeiras (Expander)
@@ -474,8 +459,6 @@ def render_conciliacao():
         int(conta_bancaria_id),
         str(dt_ini),
         str(dt_fim),
-        str(cliente_pick),
-        str(processo_pick),
         bool(mostrar_todos),
         int(limite),
     )
@@ -516,22 +499,7 @@ def render_conciliacao():
     if not mostrar_todos:
         base_sql += " AND co.id IS NULL "
 
-    if cliente_pick != "(Todos)":
-        base_sql += " AND c.nome = %s "
-        params.append(cliente_pick)
-
-    if processo_pick != "(Todos)":
-        # Se filtrar por processo, precisamos garantir que buscamos na associativa
-        # Ajuste simples: buscar ID via python e usar EXISTS ou manter filtro na ref string
-        base_sql += """
-            AND EXISTS (
-                SELECT 1 FROM movimento_processo mp_f
-                JOIN processo p_f ON p_f.id = mp_f.processo_id
-                WHERE mp_f.movimento_bancario_id = mb.id
-                AND p_f.referencia = %s
-            )
-        """
-        params.append(processo_pick)
+    # Filtros de cliente e processo removidos da UI
 
 
     base_sql += " ORDER BY mb.dt_movimento DESC, mb.id DESC LIMIT %s"
@@ -564,7 +532,20 @@ def render_conciliacao():
         st.info("Nenhum movimento encontrado.")
         return
 
-    maps = ConciliacaoMaps(cat_id_by_label=cat_id_by_label) # Maps simplificado
+    proc_id_by_label = {"-": None}
+    for _, r in df_processos.iterrows():
+        proc_id_by_label[str(r["referencia"])] = int(r["id"])
+        
+    cliente_id_by_label = {"-": None}
+    df_clientes = fetch_df_cached("SELECT id, nome FROM cliente ORDER BY nome")
+    for _, r in df_clientes.iterrows():
+        cliente_id_by_label[str(r["nome"])] = int(r["id"])
+
+    maps = ConciliacaoMaps(
+        cat_id_by_label=cat_id_by_label,
+        proc_id_by_label=proc_id_by_label,
+        cliente_id_by_label=cliente_id_by_label
+    )
 
     is_conciliado_series = df_mov["conciliacao_id"].notna()
 
@@ -596,7 +577,7 @@ def render_conciliacao():
             "Tipo": st.column_config.SelectboxColumn("Tipo", options=list(tipo_label_by_id.values()), disabled=True),
             "Observação": st.column_config.TextColumn("Observação"),
             "Valor Rateio": st.column_config.NumberColumn("Valor Rateio", disabled=True, format="R$ %.2f"),
-            "Processo": st.column_config.TextColumn("Processo", disabled=True),
+            "Processo": st.column_config.SelectboxColumn("Processo", options=["-"] + processos_ref),
             "Categoria": st.column_config.SelectboxColumn("Categoria", options=cat_labels),
             "Cliente": st.column_config.SelectboxColumn("Cliente", options=["-"] + clientes),
             "Conciliado": st.column_config.CheckboxColumn("Conciliado"),

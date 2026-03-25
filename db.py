@@ -403,17 +403,18 @@ def get_historico_importacoes() -> pd.DataFrame:
             COALESCE(u.nome, 'Sistema') as "Usuário",
             ei.dt_importacao as "Data Importação",
             e.nome as "Empresa",
-            cb.apelido as "Conta Bancária",
+            b.nome as "Banco",
             MIN(mb.dt_movimento) as "Data Inicial",
             MAX(mb.dt_movimento) as "Data Final",
             ei.status as "Status"
         FROM extrato_importacao ei
         LEFT JOIN usuario u ON ei.usuario_id = u.id
         JOIN conta_bancaria cb ON ei.conta_bancaria_id = cb.id
+        JOIN banco b ON cb.banco_id = b.id
         JOIN empresa e ON cb.empresa_id = e.id
         -- Usando JOIN interno para esconder os extratos que tiverem seus movimentos excluídos
         JOIN movimento_bancario mb ON mb.importacao_id = ei.id
-        GROUP BY ei.id, u.nome, ei.dt_importacao, e.nome, cb.apelido, ei.status
+        GROUP BY ei.id, u.nome, ei.dt_importacao, e.nome, b.nome, ei.status
         ORDER BY ei.dt_importacao DESC
     """
     return fetch_df(sql)
