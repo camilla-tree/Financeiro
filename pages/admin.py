@@ -150,6 +150,7 @@ def render_admin():
                             )
                 st.success("Alterações aplicadas.")
                 st.cache_data.clear()
+                st.rerun()
 
     # =========================
     # CLIENTE (SEM CNPJ)
@@ -217,6 +218,7 @@ def render_admin():
 
                 st.success("Alterações aplicadas.")
                 st.cache_data.clear()
+                st.rerun()
 
     # =========================
     # PROCESSO
@@ -399,6 +401,7 @@ def render_admin():
 
                         st.success("Alterações aplicadas.")
                         st.cache_data.clear()
+                        st.rerun()
 
     # =========================
     # CONTA BANCÁRIA (numero opcional)
@@ -534,3 +537,4 @@ def render_admin():
 
                         st.success("Alterações aplicadas.")
                         st.cache_data.clear()
+                        st.rerun()

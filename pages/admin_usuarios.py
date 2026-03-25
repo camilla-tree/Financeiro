@@ -129,6 +129,7 @@ def render_admin_usuarios():
 
         st.success("Alterações aplicadas.")
         st.cache_data.clear()
+        st.rerun()
 
     # Nova seção para visualização segura da chave de acesso
     with st.expander("Visualizar Chave de Acesso"):
