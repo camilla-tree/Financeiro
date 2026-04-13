@@ -10,8 +10,8 @@ _RE_DATA_INICIO = re.compile(r'^(\d{2}/\d{2}/\d{4})\s+(.*)$')
 # "05/01 12:55 D C ASSESSORIA CONTABIL L"
 _RE_CONTINUACAO_HORA = re.compile(r'^(\d{2}/\d{2})\s+\d{2}:\d{2}\s+(.+)$')
 
-# Moeda + indicador C/D do BB
-_RE_CD = re.compile(r'(\d{1,3}(?:\.\d{3})*,\d{2})\s*([CD])\b', re.IGNORECASE)
+# A regex captura [C], [D], [(+)] ou [(-)]
+_RE_CD = re.compile(r'(\d{1,3}(?:\.\d{3})*,\d{2})\s*([CD]|\(\+\)|\(\-\))', re.IGNORECASE)
 
 # Alguns docs aparecem como "10.504" etc. (opcional)
 _RE_DOC = re.compile(r'\b\d{1,3}(?:\.\d{3})+\b|\b\d{4,}\b')
@@ -20,10 +20,10 @@ def _clean_spaces(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip())
 
 def _saldo_signed(valor_str: str, cd: str):
-    """Saldo pode vir com C/D no PDF. Mantemos sinal: C positivo, D negativo."""
+    """Saldo pode vir com C/D ou (+)/(-) no PDF. Mantemos sinal."""
     v = parse_decimal_br(valor_str)
     cd = (cd or "").upper().strip()
-    return v if cd == "C" else -v
+    return v if cd in ["C", "(+)"] else -v
 
 def _valor_positive(valor_str: str):
     """VALOR do lançamento: sempre positivo (regra do seu app)."""
@@ -35,9 +35,9 @@ def _valor_positive(valor_str: str):
 
 def _tipo_from_cd(cd: str) -> str:
     cd = (cd or "").upper().strip()
-    if cd == "C":
+    if cd in ["C", "(+)"]:
         return "entrada"
-    if cd == "D":
+    if cd in ["D", "(-)"]:
         return "saida"
     return "saida"  # fallback
 
