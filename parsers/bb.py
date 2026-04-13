@@ -154,7 +154,7 @@ def parse_bb(linhas: list[str]) -> list[dict]:
             transacoes[-1]['saldo'] = _saldo_signed(valor_str, cd_str)
             continue
 
-        # Verifica se há novas datas dentro desta fatia de texto
+        # Verifica se há novas datas dentro desta fatia de texto (TODO o bloco original)
         datas = re.findall(r'\b\d{2}/\d{2}/\d{4}\b', fatia_texto)
         if datas:
             datas_validas = [d for d in datas if d != "00/00/0000"]
@@ -167,7 +167,24 @@ def parse_bb(linhas: list[str]) -> list[dict]:
         if not data_atual:
             continue
 
-        # Limpa as datas de dentro da descrição para não poluir
+        # Regra Específica: Texto "órfão" antes do BB Rende Fácil pertence ao lançamento anterior
+        if transacoes:
+            up_f = fatia_texto.upper()
+            idx_rende = up_f.find("BB RENDE FÁCIL")
+            if idx_rende == -1:
+                idx_rende = up_f.find("BB RENDE FACIL")
+            
+            if idx_rende > 0:
+                texto_antes = fatia_texto[:idx_rende].strip()
+                # Removemos as datas deste pedaço antes de apensar ao lançamento anterior
+                texto_antes = re.sub(r'\b\d{2}/\d{2}/\d{4}\b', '', texto_antes)
+                texto_antes = _clean_spaces(texto_antes)
+                if texto_antes:
+                    transacoes[-1]["descricao"] = (transacoes[-1]["descricao"] + " " + texto_antes).strip()
+                # O lançamento atual passa a considerar do "BB Rende Fácil" pra frente
+                fatia_texto = fatia_texto[idx_rende:].strip()
+
+        # Limpa as datas de dentro da descrição atual para não poluir
         desc_limpa = re.sub(r'\b\d{2}/\d{2}/\d{4}\b', '', fatia_texto)
         desc_limpa = _clean_spaces(desc_limpa)
 
