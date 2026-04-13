@@ -88,11 +88,17 @@ def parse_bb(linhas: list[str]) -> list[dict]:
                 started = True
             continue
 
-        if up.startswith("LANÇAMENTOS FUTUROS") or "SALDO ANTERIOR" in up:
+        if up.startswith("LANÇAMENTOS FUTUROS"):
+            break
+            
+        if "SALDO ANTERIOR" in up:
             continue
 
-        # ignora linha grande "S A L D O"
-        if up.strip() == "S A L D O" or up.replace(" ", "") == "SALDO":
+        # ignora linha grande "S A L D O" (quebra o laço e ignora o resto abaixo)
+        if "S A L D O" in up:
+            break
+
+        if up.replace(" ", "") == "SALDO":
             continue
 
         # ignora linha tipo: "0000 00000 999 S A L D O" (com prefixo numérico)
@@ -134,6 +140,8 @@ def parse_bb(linhas: list[str]) -> list[dict]:
 
         # Ignora saldos isolados que sobram na string
         up_fatia = fatia_texto.upper()
+        if "S A L D O" in up_fatia:
+            break
         if re.search(r"\bS\s*A\s*L\s*D\s*O\b", up_fatia):
             continue
 
@@ -162,6 +170,13 @@ def parse_bb(linhas: list[str]) -> list[dict]:
         # Limpa as datas de dentro da descrição para não poluir
         desc_limpa = re.sub(r'\b\d{2}/\d{2}/\d{4}\b', '', fatia_texto)
         desc_limpa = _clean_spaces(desc_limpa)
+
+        # Regras de limpeza de BB
+        idx_pix = desc_limpa.upper().find("PIX -")
+        if idx_pix != -1:
+            desc_limpa = desc_limpa[idx_pix:]
+
+        desc_limpa = re.sub(r'(?i)^RENDE F[AÁ]CIL\s*', '', desc_limpa).strip()
 
         # Processa valores e documentos
         valor = _valor_positive(valor_str)
