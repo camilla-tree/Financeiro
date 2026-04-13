@@ -344,19 +344,19 @@ def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtr
             -- Histórico Original
             v.descricao as "Movimentação",
             
-            -- Descrição Personalizada (Observação da Conciliação)
-            COALESCE(tbl_c.observacao, v.descricao) as "Descrição",
+            -- Descrição Personalizada (Observação da Conciliação ou Rateio)
+            COALESCE(mp.observacao, tbl_c.observacao, v.descricao) as "Descrição",
             
             v.tipo_movimento as "Tipo", 
-            v.categoria_financeira as "Categoria", 
+            COALESCE(c_mp.nome, v.categoria_financeira) as "Categoria", 
             
             -- Valores da Lógica de Cálculo de Saldo (Vêm da transação root)
             mb.valor as "Valor_Original",
             mb.is_cliente as "Is_Cliente",
             
             -- Valores rateados separados
-            CASE WHEN v.valor > 0 THEN v.valor ELSE 0 END as "Entrada",
-            CASE WHEN v.valor < 0 THEN ABS(v.valor) ELSE 0 END as "Saída",
+            CASE WHEN COALESCE(mp.valor_atribuido, v.valor) > 0 THEN COALESCE(mp.valor_atribuido, v.valor) ELSE 0 END as "Entrada",
+            CASE WHEN COALESCE(mp.valor_atribuido, v.valor) < 0 THEN ABS(COALESCE(mp.valor_atribuido, v.valor)) ELSE 0 END as "Saída",
             
             v.saldo as "Saldo"
             
@@ -367,6 +367,9 @@ def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtr
         LEFT JOIN conciliacao tbl_c ON v.conciliacao_id = tbl_c.id
         -- Re-join root movement to get is_cliente and original value
         JOIN movimento_bancario mb ON mb.id = v.movimento_id
+        -- Join para contemplar os rateios
+        LEFT JOIN movimento_processo mp ON mp.movimento_bancario_id = mb.id
+        LEFT JOIN categoria_financeira c_mp ON c_mp.id = mp.categoria_id
         
         WHERE v.dt_movimento BETWEEN %s AND %s
     """

@@ -482,7 +482,8 @@ def render_conciliacao():
             COALESCE(mp.observacao, co.observacao) AS observacao,
             c.nome AS cliente_nome,
             co.id AS conciliacao_id,
-            co.status_id AS conciliacao_status_id
+            co.status_id AS conciliacao_status_id,
+            mp.id AS mp_id
         FROM movimento_bancario mb
         LEFT JOIN movimento_processo mp ON mp.movimento_bancario_id = mb.id
         LEFT JOIN processo p ON p.id = mp.processo_id
@@ -549,7 +550,16 @@ def render_conciliacao():
 
     is_conciliado_series = df_mov["conciliacao_id"].notna()
 
+    def _make_uid(r):
+        o_mp = r.get("mp_id")
+        mp_v = 0 if pd.isna(o_mp) else int(o_mp)
+        return f"{int(r['movimento_id'])}_{mp_v}"
+
+    if not df_mov.empty and "uid" not in df_mov.columns:
+        df_mov["uid"] = df_mov.apply(_make_uid, axis=1)
+
     df_tbl = pd.DataFrame({
+        "UID": df_mov["uid"],
         "ID": df_mov["movimento_id"].astype(int),
         "Data": df_mov["dt_movimento"],
         "Descrição": df_mov["descricao"].astype(str),
@@ -569,6 +579,7 @@ def render_conciliacao():
         width="stretch",
         hide_index=True,
         column_config={
+            "UID": None,
             "ID": st.column_config.NumberColumn("ID", disabled=True, width="small"),
             "Data": st.column_config.DateColumn("Data", disabled=True),
             "Descrição": st.column_config.TextColumn("Descrição", disabled=True),

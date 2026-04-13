@@ -72,7 +72,7 @@ def render_exportacao():
                     emp = row["Empresa"]
                     if emp not in saldos_atuais:
                         saldos_atuais[emp] = float(saldo_inicial)
-                    val = float(row.get("Valor_Original", 0.0))
+                    val = float(row.get("Entrada", 0.0)) - float(row.get("Saída", 0.0))
                     saldos_atuais[emp] += val
                     novo_saldo_col.append(saldos_atuais[emp])
                 df_resultado["Saldo"] = novo_saldo_col
@@ -80,7 +80,7 @@ def render_exportacao():
                 saldo_atual = float(saldo_inicial)
                 novo_saldo_col = []
                 for idx, row in df_resultado.iterrows():
-                    val = float(row.get("Valor_Original", 0.0))
+                    val = float(row.get("Entrada", 0.0)) - float(row.get("Saída", 0.0))
                     saldo_atual += val
                     novo_saldo_col.append(saldo_atual)
                 df_resultado["Saldo"] = novo_saldo_col

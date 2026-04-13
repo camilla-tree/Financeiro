@@ -45,9 +45,10 @@ def calcular_changes(
     changes: List[dict] = []
 
     # Para lookup rápido
-    df_mov_by_id = df_mov.set_index("movimento_id", drop=False)
+    df_mov_by_uid = df_mov.set_index("uid", drop=False)
 
     for i in range(len(edited)):
+        uid = edited.loc[i, "UID"]
         mid = int(edited.loc[i, "ID"])
 
         new_cat_label = edited.loc[i, "Categoria"]
@@ -69,12 +70,13 @@ def calcular_changes(
             want_conc = True
 
         try:
-            old_row = df_mov_by_id.loc[mid]
+            old_row = df_mov_by_uid.loc[uid]
             if isinstance(old_row, pd.DataFrame):
                 old_row = old_row.iloc[0]
         except KeyError:
             continue
             
+        old_mp_id = _safe_int(old_row.get("mp_id"))
         old_cat = _safe_int(old_row.get("categoria_id"))
         
         old_obs_val = old_row.get("observacao")
@@ -112,7 +114,9 @@ def calcular_changes(
                 want_conc = True
 
             changes.append({
+                "uid": uid,
                 "mid": mid,
+                "mp_id": old_mp_id,
                 "new_cat_id": new_cat_id,
                 "proc_changed": new_proc_label_str != old_proc_ref_str,
                 "new_proc_id": new_proc_id,
@@ -140,21 +144,41 @@ def aplicar_changes_no_banco(
             with conn.cursor() as cur:
                 for ch in changes:
                     mid = ch["mid"]
+                    mp_id = ch.get("mp_id")
                     
-                    # 1) Categoria e Is_cliente
-                    cur.execute(
-                        "UPDATE movimento_bancario SET categoria_id = %s, is_cliente = %s WHERE id = %s",
-                        (ch["new_cat_id"], ch["want_cliente"], int(mid)),
-                    )
-                    
-                    # 1.5) Processo (tabela N:N convertida em 1 único vínculo na base)
-                    if ch["proc_changed"]:
-                        cur.execute("DELETE FROM movimento_processo WHERE movimento_bancario_id = %s", (int(mid),))
-                        if ch["new_proc_id"] is not None:
+                    if mp_id is not None:
+                        # É uma partição de rateio, não apaga as demais
+                        if ch["proc_changed"]:
                             cur.execute(
-                                "INSERT INTO movimento_processo (movimento_bancario_id, processo_id, valor_atribuido) VALUES (%s, %s, (SELECT valor FROM movimento_bancario WHERE id = %s))", 
-                                (int(mid), ch["new_proc_id"], int(mid))
+                                "UPDATE movimento_processo SET processo_id = %s, observacao = %s, categoria_id = %s WHERE id = %s",
+                                (ch["new_proc_id"], ch["new_obs"], ch["new_cat_id"], int(mp_id)),
                             )
+                        else:
+                            cur.execute(
+                                "UPDATE movimento_processo SET observacao = %s, categoria_id = %s WHERE id = %s",
+                                (ch["new_obs"], ch["new_cat_id"], int(mp_id))
+                            )
+                        
+                        # is_cliente continua sendo da raiz
+                        cur.execute(
+                            "UPDATE movimento_bancario SET is_cliente = %s WHERE id = %s",
+                            (ch["want_cliente"], int(mid)),
+                        )
+                    else:
+                        # 1) Categoria e Is_cliente (movimento nao particionado)
+                        cur.execute(
+                            "UPDATE movimento_bancario SET categoria_id = %s, is_cliente = %s WHERE id = %s",
+                            (ch["new_cat_id"], ch["want_cliente"], int(mid)),
+                        )
+                        
+                        # 1.5) Processo (tabela N:N convertida em 1 único vínculo na base)
+                        if ch["proc_changed"]:
+                            cur.execute("DELETE FROM movimento_processo WHERE movimento_bancario_id = %s", (int(mid),))
+                            if ch["new_proc_id"] is not None:
+                                cur.execute(
+                                    "INSERT INTO movimento_processo (movimento_bancario_id, processo_id, valor_atribuido) VALUES (%s, %s, (SELECT valor FROM movimento_bancario WHERE id = %s))", 
+                                    (int(mid), ch["new_proc_id"], int(mid))
+                                )
 
                     # 2) Conciliação
                     if ch["want_conc"] or ch["cliente_changed"]:
