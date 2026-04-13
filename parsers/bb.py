@@ -88,23 +88,16 @@ def parse_bb(linhas: list[str]) -> list[dict]:
                 started = True
             continue
 
-        if up.startswith("LANÇAMENTOS FUTUROS"):
-            break
-
-        if "SALDO ANTERIOR" in up:
+        if up.startswith("LANÇAMENTOS FUTUROS") or "SALDO ANTERIOR" in up:
             continue
 
         # ignora linha grande "S A L D O"
-        if up.strip() == "S A L D O":
-            continue
-
-        if up.replace(" ", "") == "SALDO":
+        if up.strip() == "S A L D O" or up.replace(" ", "") == "SALDO":
             continue
 
         # ignora linha tipo: "0000 00000 999 S A L D O" (com prefixo numérico)
         if re.search(r"\bS\s*A\s*L\s*D\s*O\b", up):
             continue
-
 
         # ignora rodapés comuns
         if (
@@ -123,80 +116,70 @@ def parse_bb(linhas: list[str]) -> list[dict]:
     if not trecho:
         trecho = raw[:]
 
-    # 3) junta continuações na linha anterior
-    linhas_join: list[str] = []
-    for ln in trecho:
-        if _RE_DATA_INICIO.match(ln):
-            linhas_join.append(ln)
+    # 3) Nova Lógica Baseada em Âncoras de Valor (Sugerida e Aprimorada)
+    # Junta tudo em uma única string e fatia considerando os valores como âncoras.
+    texto_completo = _clean_spaces(" ".join(trecho))
+    
+    data_atual = None
+    inicio_fatia = 0
+    
+    iter_valores = list(_RE_CD.finditer(texto_completo))
+
+    for match in iter_valores:
+        valor_str = match.group(1)
+        cd_str = match.group(2)
+
+        fatia_texto = texto_completo[inicio_fatia:match.start()].strip()
+        inicio_fatia = match.end()
+
+        # Ignora saldos isolados que sobram na string
+        up_fatia = fatia_texto.upper()
+        if re.search(r"\bS\s*A\s*L\s*D\s*O\b", up_fatia):
             continue
 
-        # continuação com hora (05/01 12:55 ...)
-        if _RE_CONTINUACAO_HORA.match(ln) and linhas_join:
-            linhas_join[-1] = _clean_spaces(linhas_join[-1] + " " + ln)
+        # Verifica se fatia é um indicativo de salto e saldo isolado de transação
+        # Se a fatia tem pouquíssimos ou nenhum caractere (sem letras), 
+        # é indicativo de que este valor seja apenas o saldo referente ao lançamento anterior.
+        tem_letras = bool(re.search(r'[a-zA-Z]', fatia_texto))
+        if transacoes and not tem_letras and len(fatia_texto) < 15:
+            # É provável que seja o saldo listado em linha com a transação
+            transacoes[-1]['saldo'] = _saldo_signed(valor_str, cd_str)
             continue
 
-        # qualquer outra continuação cola na anterior
-        if linhas_join:
-            linhas_join[-1] = _clean_spaces(linhas_join[-1] + " " + ln)
-        else:
-            linhas_join.append(ln)
+        # Verifica se há novas datas dentro desta fatia de texto
+        datas = re.findall(r'\b\d{2}/\d{2}/\d{4}\b', fatia_texto)
+        if datas:
+            datas_validas = [d for d in datas if d != "00/00/0000"]
+            if datas_validas:
+                try:
+                    data_atual = parse_data_br(datas_validas[-1])
+                except Exception:
+                    pass
 
-    # 4) parse
-    for ln in linhas_join:
-        m = _RE_DATA_INICIO.match(ln)
-        if not m:
+        if not data_atual:
             continue
 
-        dt_str, resto = m.group(1), m.group(2)
-        try:
-            dt_movimento = parse_data_br(dt_str)
-        except Exception:
-            continue
+        # Limpa as datas de dentro da descrição para não poluir
+        desc_limpa = re.sub(r'\b\d{2}/\d{2}/\d{4}\b', '', fatia_texto)
+        desc_limpa = _clean_spaces(desc_limpa)
 
-        cds = list(_RE_CD.finditer(resto))
-        if not cds:
-            continue
+        # Processa valores e documentos
+        valor = _valor_positive(valor_str)
+        tipo = _tipo_from_cd(cd_str)
 
-        # valor / saldo
-        if len(cds) >= 2:
-            valor_num, valor_cd = cds[-2].group(1), cds[-2].group(2)
-            saldo_num, saldo_cd = cds[-1].group(1), cds[-1].group(2)
-            saldo = _saldo_signed(saldo_num, saldo_cd)
-            spans_to_remove = [(cds[-2].start(), cds[-2].end()), (cds[-1].start(), cds[-1].end())]
-        else:
-            valor_num, valor_cd = cds[-1].group(1), cds[-1].group(2)
-            saldo = None
-            spans_to_remove = [(cds[-1].start(), cds[-1].end())]
+        doc_candidates = list(_RE_DOC.finditer(desc_limpa))
+        documento = doc_candidates[-1].group(0) if doc_candidates else None
 
-        valor = _valor_positive(valor_num)
-        tipo = _tipo_from_cd(valor_cd)
+        if not desc_limpa:
+            desc_limpa = "Lançamento"
 
-        # ✅ descrição completa: remove apenas os tokens monetários e mantém o resto (inclusive partes após o valor)
-        desc_raw = _remove_spans(resto, spans_to_remove)
-        desc_raw = _clean_spaces(desc_raw)
-
-        # documento (opcional): tenta pegar o "doc" mais característico (ex.: 10.504) sem destruir a descrição
-        documento = None
-        # aqui eu prefiro pegar o ÚLTIMO padrão de doc antes do valor (geralmente faz mais sentido)
-        # se não achar, deixa None
-        doc_candidates = list(_RE_DOC.finditer(desc_raw))
-        if doc_candidates:
-            documento = doc_candidates[-1].group(0)
-
-        descricao = desc_raw
-
-        if not descricao:
-            descricao = "Lançamento"
-
-        transacoes.append(
-            {
-                "dt_movimento": dt_movimento,
-                "descricao": descricao,
-                "documento": documento,
-                "valor": valor,   # sempre positivo
-                "tipo": tipo,     # C=entrada, D=saida
-                "saldo": saldo,   # pode ser None
-            }
-        )
+        transacoes.append({
+            "dt_movimento": data_atual,
+            "descricao": desc_limpa,
+            "documento": documento,
+            "valor": valor,
+            "tipo": tipo,
+            "saldo": None  # Saldos serão preenchidos no próximo ciclo, se caírem no critério acima
+        })
 
     return transacoes

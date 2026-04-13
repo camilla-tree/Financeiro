@@ -68,11 +68,16 @@ def to_df(transacoes: List[dict]) -> pd.DataFrame:
     df = pd.DataFrame(transacoes)
     if df.empty:
         return df
-    for col in ["dt_movimento", "descricao", "documento", "valor", "saldo"]:
+    
+    # Remover colunas ignoradas da preview
+    for col in ["dt_movimento", "descricao", "valor"]:
         if col not in df.columns:
             df[col] = None
     df["descricao"] = df["descricao"].astype(str).map(normalize_text)
-    return df[["dt_movimento", "descricao", "documento", "valor", "saldo"]]
+    
+    # Exibir apenas colunas úteis
+    cols_to_show = [c for c in ["dt_movimento", "descricao", "valor"] if c in df.columns]
+    return df[cols_to_show]
 
 
 def make_hash_unico(
@@ -258,7 +263,7 @@ def _normalize_transacoes_for_db(transacoes: list[dict]) -> list[dict]:
         if tipo in ("ENTRADA ",):
             tipo = "ENTRADA"
 
-        # ---- valor (sempre positivo) / inferência de tipo pelo sinal ----
+        # ---- valor com sinal (positivo entrada, negativo saída) ----
         signed = x.get("valor_signed")
         if signed is None:
             signed = x.get("valor_num")
@@ -281,20 +286,26 @@ def _normalize_transacoes_for_db(transacoes: list[dict]) -> list[dict]:
             else:
                 tipo = "SAIDA"
 
-        # valor final sempre positivo
         if v_signed is not None:
-            x["valor"] = abs(v_signed)
+            base_val = abs(v_signed)
         else:
             try:
-                x["valor"] = abs(float(x.get("valor") or 0))
+                base_val = abs(float(x.get("valor") or 0))
             except Exception:
-                x["valor"] = 0.0
+                base_val = 0.0
+
+        # MUDANÇA: negativo para SAIDA
+        if tipo == "SAIDA":
+            x["valor"] = -base_val
+        else:
+            x["valor"] = base_val
 
         x["tipo"] = tipo
         x["tipo_id"] = 1 if tipo == "ENTRADA" else 2
 
-        if "documento" not in x:
-            x["documento"] = None
+        # Sobrescrevendo valores irrelevantes
+        x["documento"] = None
+        x["saldo"] = None
 
         out.append(x)
 
