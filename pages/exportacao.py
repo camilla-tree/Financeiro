@@ -102,7 +102,7 @@ def render_exportacao():
     if not df.empty:
         # --- DEFINIÇÃO DAS COLUNAS PARA EXIBIÇÃO ---
         # Adicionamos "Empresa" no início
-        cols_view = ["Empresa", "Banco", "Data", "Movimentação", "Descrição", "Categoria", "Entrada", "Saída", "Saldo"]
+        cols_view = ["Empresa", "Banco", "Processo", "Data", "Movimentação", "Descrição", "Categoria", "Entrada", "Saída", "Saldo"]
         
         # Garante integridade das colunas
         for col in cols_view:
@@ -198,13 +198,6 @@ def gerar_pdf_hurr(df, titulo="Relatório", saldo_inicial=0.0, is_cliente=False)
     elementos = []
     styles = getSampleStyleSheet()
 
-    # Logo
-    try:
-        logo = Image("assets/logo.png", width=40*mm, height=15*mm)
-        logo.hAlign = 'RIGHT'
-    except:
-        logo = Paragraph("HURR PARTICIPAÇÕES", styles['Normal'])
-
     saldo_atual = float(df["Saldo"].iloc[-1]) if not df.empty and "Saldo" in df.columns else saldo_inicial
     
     mes_str = ""
@@ -221,8 +214,8 @@ def gerar_pdf_hurr(df, titulo="Relatório", saldo_inicial=0.0, is_cliente=False)
     """
     titulo_text = Paragraph(header_html, styles['Normal'])
     
-    data_header = [[titulo_text, logo]]
-    t_header = Table(data_header, colWidths=[200*mm, 80*mm])
+    data_header = [[titulo_text]]
+    t_header = Table(data_header, colWidths=[280*mm])
     t_header.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'LEFT'), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
     elementos.append(t_header)
     elementos.append(Spacer(1, 5*mm))
@@ -250,14 +243,14 @@ def gerar_pdf_hurr(df, titulo="Relatório", saldo_inicial=0.0, is_cliente=False)
         lista_dados.append(linha)
 
     # --- NOVAS LARGURAS (Total Disponível ~285mm) ---
-    # [Empresa, Banco, Data, Movimentação, Descrição, Categoria, Entrada, Saída, Saldo]
-    # Ajustei distribuindo a largura que era do Tipo
+    # [Empresa, Banco, Processo, Data, Movimentação, Descrição, Categoria, Entrada, Saída, Saldo]
     col_widths = [
         25*mm,  # Empresa 
-        28*mm,  # Banco
-        24*mm,  # Data
-        42*mm,  # Movimentação 
-        53*mm,  # Descrição
+        23*mm,  # Banco
+        23*mm,  # Processo
+        20*mm,  # Data
+        38*mm,  # Movimentação 
+        44*mm,  # Descrição
         28*mm,  # Categoria
         24*mm,  # Entrada
         24*mm,  # Saída
