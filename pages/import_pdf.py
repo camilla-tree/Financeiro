@@ -160,6 +160,7 @@ def _gravar_importacao(
                     )
 
                 # 3) movimentos (dedup por hash_unico)
+                hash_counts = {}
                 rows = []
                 for t in transacoes:
                     dt_mov = t["dt_movimento"]
@@ -167,9 +168,16 @@ def _gravar_importacao(
                     doc = (t.get("documento") or None)
                     val = t["valor"]
                     sal = t.get("saldo", None)
-                    h = make_hash_unico(
+                    
+                    base_h = make_hash_unico(
                         conta_bancaria_id, banco_id, dt_mov, desc, doc, val, sal
                     )
+                    
+                    idx = hash_counts.get(base_h, 0)
+                    hash_counts[base_h] = idx + 1
+                    
+                    h = f"{base_h}-{idx}" if idx > 0 else base_h
+                    
                     rows.append(
                         (
                             conta_bancaria_id,
