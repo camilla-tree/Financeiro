@@ -43,7 +43,7 @@ def parse_sicoob_excel(file_bytes: bytes) -> list[dict]:
         if not pd.isna(historico_raw):
             hist_str = str(historico_raw).strip()
             
-        if hist_str.upper() in ["SALDO DO DIA", "SALDO ANTERIOR"]:
+        if hist_str.upper() in ["SALDO DO DIA", "SALDO ANTERIOR", "SALDO BLOQUEADO ANTERIOR", "SALDO BLOQUEADO DO DIA"]:
             continue
             
         dt_mov = None
