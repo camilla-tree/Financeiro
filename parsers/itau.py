@@ -187,6 +187,11 @@ def parse_itau(linhas: list[str]) -> list[dict]:
             descricao = descricao.replace(documento, '').strip()
             descricao = re.sub(r'\s+', ' ', descricao)
 
+        # Regras de exclusão solicitadas
+        desc_upper = descricao.upper()
+        if "SALDO MOVIMENTAÇÃO CONTA" in desc_upper:
+            continue
+            
         transacoes.append({
             "dt_movimento": dt_movimento,
             "descricao": descricao,
