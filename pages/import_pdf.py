@@ -21,7 +21,7 @@ from parsers.nubank_csv import parse_nubank_csv
 from parsers.santander import parse_santander
 from parsers.sicredi import parse_sicredi
 from parsers.bb import parse_bb
-from parsers.sicoob import parse_sicoob
+from parsers.sicoob import parse_sicoob, parse_sicoob_excel
 
 
 
@@ -370,12 +370,12 @@ def render_import_pdf():
             if u != "(Usar sessão / Sem usuário)":
                 usuario_id = int(df_user[df_user["nome"] == u]["id"].iloc[0])
 
-    # --- Upload: PDF/CSV ---
-    uploaded = st.file_uploader("Extrato (PDF/CSV)", type=["pdf", "csv"])
+    # --- Upload: PDF/CSV/EXCEL ---
+    uploaded = st.file_uploader("Extrato (PDF / CSV / XLSX)", type=["pdf", "csv", "xlsx"])
     salvar_raw = True
 
     if not uploaded:
-        st.info("Envie um arquivo (PDF ou CSV) para habilitar a importação.")
+        st.info("Envie um arquivo para habilitar a importação.")
         return
 
     file_bytes = uploaded.read()
@@ -383,6 +383,7 @@ def render_import_pdf():
     ext = os.path.splitext(arquivo_nome.lower())[1]
     is_csv = ext == ".csv"
     is_pdf = ext == ".pdf"
+    is_xlsx = ext == ".xlsx"
     hash_arquivo = sha256_bytes(file_bytes)
 
     # --- Regras por banco/formato ---
@@ -392,9 +393,13 @@ def render_import_pdf():
         return
 
     # Inter: CSV ou PDF (CSV novo; PDF continua como está)
-    # Outros bancos: apenas PDF (por enquanto)
-    if banco_codigo not in ("NUBANK", "INTER") and not is_pdf:
+    # Outros bancos: apenas PDF (por enquanto), com exceção de Sicoob que permite XLSX
+    if banco_codigo not in ("NUBANK", "INTER", "SICOOB") and not is_pdf:
         st.error(f"Para o banco {banco_codigo}, neste momento aceitamos apenas PDF.")
+        return
+
+    if banco_codigo == "SICOOB" and not (is_pdf or is_xlsx):
+        st.error("Para o Sicoob, neste sistema aceitamos apenas arquivo PDF ou XLSX.")
         return
 
     # Se trocou o arquivo, limpa preview antigo
@@ -444,6 +449,27 @@ def render_import_pdf():
             transacoes = _normalize_transacoes_for_db(transacoes)
 
             # DataFrame final para preview
+            df = to_df(transacoes)
+
+
+        # ---------- EXCEL path ----------
+        elif is_xlsx:
+            origem_formato = "EXCEL"
+            
+            if banco_codigo == "SICOOB":
+                parsed = parse_sicoob_excel(file_bytes)
+            else:
+                st.error(f"Não existe parser XLSX cadastrado para o banco: {banco_codigo}")
+                return
+            
+            raw_lines = [{"pagina": 1, "linha_ordem": i+1, "texto_raw": f"XLSX L={i+1}"} for i in range(len(parsed))]
+            
+            if isinstance(parsed, pd.DataFrame):
+                transacoes = parsed.to_dict(orient="records")
+            else:
+                transacoes = parsed
+                
+            transacoes = _normalize_transacoes_for_db(transacoes)
             df = to_df(transacoes)
 
 

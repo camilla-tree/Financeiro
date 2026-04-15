@@ -1,4 +1,6 @@
 import re
+import io
+import pandas as pd
 from decimal import Decimal
 from .base import parse_data_br
 
@@ -8,6 +10,149 @@ _RE_DATA_INICIO = re.compile(r'^(\d{2}/\d{2}/\d{4})\s+(.*)$')
 # Captura o valor no final da linha com C, D (ou 0 por erro de leitura do PDF)
 # Ex: "418.464,16C" | "449.329.27D" | "119.400,000"
 _RE_VALOR_CD = re.compile(r'(-?[\d.,]+)\s*([CDcd0])\s*$', re.IGNORECASE)
+
+def parse_sicoob_excel(file_bytes: bytes) -> list[dict]:
+    """
+    Parser SICOOB - Extrato conta corrente em Excel (.xlsx)
+    """
+    df = pd.read_excel(io.BytesIO(file_bytes), header=None)
+    
+    # Achar linha de cabeçalho
+    header_idx = -1
+    for i, row in df.iterrows():
+        row_str = [str(x).strip().upper() for x in row.values]
+        if 'DATA' in row_str and 'HISTÓRICO' in row_str:
+            header_idx = i
+            break
+            
+    if header_idx == -1:
+        raise ValueError("Não foi possível encontrar a linha de cabeçalho (DATA, HISTÓRICO) no arquivo .xlsx.")
+        
+    df.columns = [str(c).strip().upper() for c in df.iloc[header_idx].values]
+    df = df.iloc[header_idx + 1:].reset_index(drop=True)
+    
+    transacoes = []
+    last_date = None
+    last_historico = None
+    
+    for _, row in df.iterrows():
+        data_val = row.get("DATA")
+        historico_raw = row.get("HISTÓRICO")
+        
+        hist_str = ""
+        if not pd.isna(historico_raw):
+            hist_str = str(historico_raw).strip()
+            
+        if hist_str.upper() == "SALDO DO DIA":
+            continue
+            
+        dt_mov = None
+        # Parse data se houver
+        if not pd.isna(data_val) and str(data_val).strip() != "":
+            if isinstance(data_val, pd.Timestamp):
+                dt_mov = data_val.date()
+            else:
+                try:
+                    dt_mov = parse_data_br(str(data_val).strip()[:10])
+                except Exception:
+                    pass
+
+        # Atualização do contexto (memória para as linhas que vêm sem data/histérico)
+        if dt_mov:
+            last_date = dt_mov
+            last_historico = hist_str.upper()
+        else:
+            dt_mov = last_date
+            
+        if not dt_mov:
+            continue
+            
+        # Tratamento especial do parent row de "CRÉD.LIQUIDAÇÃO COBRANÇA"
+        # Ignoramos a linha pai porque ela contém o somatório. O que importa são as sub-linhas.
+        if hist_str.upper() == "CRÉD.LIQUIDAÇÃO COBRANÇA" and (not pd.isna(data_val) and str(data_val).strip() != ""):
+            last_historico = "CRÉD.LIQUIDAÇÃO COBRANÇA"
+            continue
+            
+        is_sub_transacao = False
+        
+        # Identificando sub-transações (linhas sem DATA preenchida)
+        if pd.isna(data_val) or str(data_val).strip() == "":
+            if last_historico == "CRÉD.LIQUIDAÇÃO COBRANÇA":
+                is_sub_transacao = True
+            else:
+                continue
+
+        # Parse descricao e detalhamento
+        desc = hist_str
+        detalhe = row.get("DETALHAMENTO")
+        
+        if is_sub_transacao:
+            desc = "CRÉD.LIQUIDAÇÃO COBRANÇA"
+            if not pd.isna(detalhe) and str(detalhe).strip():
+                desc += f" - {str(detalhe).strip()}"
+        else:
+            if not pd.isna(detalhe) and str(detalhe).strip():
+                if desc:
+                    desc = f"{desc} - {str(detalhe).strip()}"
+                else:
+                    desc = str(detalhe).strip()
+                
+        # Documento
+        doc = None
+        if is_sub_transacao:
+            doc_raw = row.get("DOC")
+            if not pd.isna(doc_raw) and str(doc_raw).strip() != "":
+                doc = str(doc_raw).strip()
+        else:
+            doc_raw = row.get("DOCUMENTO")
+            if not pd.isna(doc_raw) and str(doc_raw).strip() != "":
+                doc = str(doc_raw).strip()
+
+        # Valor
+        valor_val = None
+        if is_sub_transacao:
+            valor_val = row.get("COMPROV")
+        else:
+            valor_col = None
+            for col in df.columns:
+                if "VALOR" in col:
+                    valor_col = col
+                    break
+            if valor_col:
+                valor_val = row.get(valor_col)
+                
+        if pd.isna(valor_val) or str(valor_val).strip() == "":
+            continue
+            
+        try:
+            if isinstance(valor_val, str):
+                v_str = str(valor_val).upper().replace('R$', '').strip()
+                if v_str.endswith('C') or v_str.endswith('D'):
+                    is_d = v_str.endswith('D')
+                    v_clean = re.sub(r'[^\d]', '', v_str)
+                    numeric_val = Decimal(v_clean) / Decimal(100)
+                    if is_d:
+                        numeric_val = -numeric_val
+                else:
+                    v_clean = v_str.replace('.', '').replace(',', '.')
+                    numeric_val = Decimal(re.sub(r'[^\d\.-]', '', v_clean))
+            else:
+                numeric_val = Decimal(f"{float(valor_val):.2f}")
+        except Exception:
+            numeric_val = Decimal(0)
+            
+        if numeric_val == 0:
+            pass
+            
+        transacoes.append({
+            "dt_movimento": dt_mov,
+            "descricao": desc,
+            "documento": doc,
+            "valor": numeric_val,
+            "saldo": None
+        })
+        
+    return transacoes
 
 def parse_sicoob(linhas: list[str]) -> list[dict]:
     """
