@@ -339,6 +339,7 @@ def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtr
             e.nome as "Empresa",
             
             v.banco_nome as "Banco", 
+            p.referencia as "Processo",
             v.dt_movimento as "Data", 
             
             -- Histórico Original
@@ -370,6 +371,7 @@ def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtr
         -- Join para contemplar os rateios
         LEFT JOIN movimento_processo mp ON mp.movimento_bancario_id = mb.id
         LEFT JOIN categoria_financeira c_mp ON c_mp.id = mp.categoria_id
+        LEFT JOIN processo p ON p.id = mp.processo_id
         
         WHERE v.dt_movimento BETWEEN %s AND %s
     """
