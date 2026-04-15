@@ -43,7 +43,7 @@ def parse_sicoob_excel(file_bytes: bytes) -> list[dict]:
         if not pd.isna(historico_raw):
             hist_str = str(historico_raw).strip()
             
-        if hist_str.upper() == "SALDO DO DIA":
+        if hist_str.upper() in ["SALDO DO DIA", "SALDO ANTERIOR"]:
             continue
             
         dt_mov = None
@@ -57,7 +57,7 @@ def parse_sicoob_excel(file_bytes: bytes) -> list[dict]:
                 except Exception:
                     pass
 
-        # Atualização do contexto (memória para as linhas que vêm sem data/histérico)
+        # Atualização do contexto (memória para as linhas que vêm sem data/histórico)
         if dt_mov:
             last_date = dt_mov
             last_historico = hist_str.upper()
@@ -67,11 +67,9 @@ def parse_sicoob_excel(file_bytes: bytes) -> list[dict]:
         if not dt_mov:
             continue
             
-        # Tratamento especial do parent row de "CRÉD.LIQUIDAÇÃO COBRANÇA"
-        # Ignoramos a linha pai porque ela contém o somatório. O que importa são as sub-linhas.
+        # Para o parent row de "CRÉD.LIQUIDAÇÃO COBRANÇA" guardamos o estado
         if hist_str.upper() == "CRÉD.LIQUIDAÇÃO COBRANÇA" and (not pd.isna(data_val) and str(data_val).strip() != ""):
             last_historico = "CRÉD.LIQUIDAÇÃO COBRANÇA"
-            continue
             
         is_sub_transacao = False
         
@@ -110,7 +108,7 @@ def parse_sicoob_excel(file_bytes: bytes) -> list[dict]:
 
         # Valor
         valor_val = None
-        if is_sub_transacao:
+        if is_sub_transacao or hist_str.upper() == "CRÉD.LIQUIDAÇÃO COBRANÇA":
             valor_val = row.get("COMPROV")
         else:
             valor_col = None
