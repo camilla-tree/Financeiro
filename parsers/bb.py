@@ -25,13 +25,18 @@ def _saldo_signed(valor_str: str, cd: str):
     cd = (cd or "").upper().strip()
     return v if cd in ["C", "(+)"] else -v
 
-def _valor_positive(valor_str: str):
-    """VALOR do lançamento: sempre positivo (regra do seu app)."""
+def _valor_signed(valor_str: str, cd: str):
+    """VALOR do lançamento: assinado conforme C/D."""
     v = parse_decimal_br(valor_str)
+    cd = (cd or "").upper().strip()
     try:
-        return abs(v)
+        if cd in ["C", "(+)"]:
+            return abs(v)
+        elif cd in ["D", "(-)"]:
+            return -abs(v)
+        return -abs(v)
     except Exception:
-        return v
+        return -v if cd in ["D", "(-)"] else v
 
 def _tipo_from_cd(cd: str) -> str:
     cd = (cd or "").upper().strip()
@@ -196,7 +201,7 @@ def parse_bb(linhas: list[str]) -> list[dict]:
         desc_limpa = re.sub(r'(?i)^RENDE F[AÁ]CIL\s*', '', desc_limpa).strip()
 
         # Processa valores e documentos
-        valor = _valor_positive(valor_str)
+        valor = _valor_signed(valor_str, cd_str)
         tipo = _tipo_from_cd(cd_str)
 
         doc_candidates = list(_RE_DOC.finditer(desc_limpa))
