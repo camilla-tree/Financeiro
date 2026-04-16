@@ -475,6 +475,7 @@ def render_conciliacao():
             mp.valor_atribuido AS valor_rateio,   -- Valor específico deste rateio
             mb.tipo_id,
             mb.is_cliente,
+            mb.tipo_relatorio,
             mt.nome AS tipo_nome,
             COALESCE(mp.categoria_id, mb.categoria_id) AS categoria_id,
             COALESCE(cf_mp.nome, cf_mb.nome) AS categoria_nome,
@@ -558,6 +559,16 @@ def render_conciliacao():
     if not df_mov.empty and "uid" not in df_mov.columns:
         df_mov["uid"] = df_mov.apply(_make_uid, axis=1)
 
+    def _map_destino(val):
+        v = str(val).upper()
+        if v == "CLIENTE": return "Cliente"
+        if v == "SOCIO": return "Sócio"
+        if v == "DIVERSOS": return "Diversos"
+        return "Empresa"
+        
+    if not df_mov.empty and "destino_str" not in df_mov.columns:
+        df_mov["destino_str"] = df_mov["tipo_relatorio"].apply(_map_destino)
+        
     df_tbl = pd.DataFrame({
         "UID": df_mov["uid"],
         "ID": df_mov["movimento_id"].astype(int),
@@ -571,7 +582,7 @@ def render_conciliacao():
         "Categoria": df_mov["categoria_id"].apply(_cat_label),
         "Cliente": df_mov["cliente_nome"].fillna("-"),
         "Conciliado": is_conciliado_series.astype(bool),
-        "Pgto_Cliente": df_mov["is_cliente"].fillna(False).astype(bool),
+        "Destino": df_mov["destino_str"] if not df_mov.empty else [],
     })
 
     edited = st.data_editor(
@@ -590,7 +601,7 @@ def render_conciliacao():
             "Categoria": st.column_config.SelectboxColumn("Categoria", options=cat_labels),
             "Cliente": st.column_config.SelectboxColumn("Cliente", options=["-"] + clientes),
             "Conciliado": st.column_config.CheckboxColumn("Conciliado"),
-            "Pgto_Cliente": st.column_config.CheckboxColumn("Pgto_Cliente"),
+            "Destino": st.column_config.SelectboxColumn("Destino", options=["Empresa", "Cliente", "Sócio", "Diversos"]),
         },
         key="conc_editor",
     )

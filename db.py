@@ -353,7 +353,7 @@ def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtr
             
             -- Valores da Lógica de Cálculo de Saldo (Vêm da transação root)
             mb.valor as "Valor_Original",
-            mb.is_cliente as "Is_Cliente",
+            mb.tipo_relatorio as "Tipo_Relatorio",
             
             -- Valores rateados separados
             CASE WHEN COALESCE(mp.valor_atribuido, v.valor) > 0 THEN COALESCE(mp.valor_atribuido, v.valor) ELSE 0 END as "Entrada",
@@ -380,9 +380,7 @@ def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtr
 
     # Filtros Opcionais Adicionais
     if tipo_filtro == "Cliente":
-        # Se for para o relatorio de cliente, o is_cliente TEM que ser obrigatorio (só aparece is_cliente=true na view do cliente)
-        sql += " AND mb.is_cliente = true "
-        
+        sql += " AND mb.tipo_relatorio = 'CLIENTE' "
         if valor_filtro != "Todos":
             sql += " AND v.cliente_nome = %s "
             params.append(valor_filtro)
@@ -391,7 +389,20 @@ def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtr
             sql += " AND e.nome = %s "
             params.append(empresa_selecionada)
             
+    elif tipo_filtro == "Sócio":
+        sql += " AND mb.tipo_relatorio = 'SOCIO' "
+        if valor_filtro != "Todas":
+            sql += " AND e.nome = %s "
+            params.append(valor_filtro)
+            
+    elif tipo_filtro == "Diversos":
+        sql += " AND mb.tipo_relatorio = 'DIVERSOS' "
+        if valor_filtro != "Todas":
+            sql += " AND e.nome = %s "
+            params.append(valor_filtro)
+            
     elif tipo_filtro == "Empresa":
+        sql += " AND mb.tipo_relatorio = 'EMPRESA' "
         if valor_filtro != "Todas":
             sql += " AND e.nome = %s "
             params.append(valor_filtro)

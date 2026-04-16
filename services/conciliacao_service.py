@@ -37,8 +37,8 @@ def calcular_changes(
         for _, r in df_mov.iterrows()
     }
     
-    current_is_cliente = {
-        int(r["movimento_id"]): bool(r.get("is_cliente", False))
+    current_tipo_relatorio = {
+        int(r["movimento_id"]): str(r.get("tipo_relatorio", "EMPRESA")).upper()
         for _, r in df_mov.iterrows()
     }
 
@@ -62,8 +62,10 @@ def calcular_changes(
         want_conc = bool(edited.loc[i, "Conciliado"])
         already_conc = current_is_conc.get(mid, False)
 
-        want_cliente = bool(edited.loc[i, "Pgto_Cliente"])
-        already_cliente = current_is_cliente.get(mid, False)
+        mapa_relatorios = {"Empresa": "EMPRESA", "Cliente": "CLIENTE", "Sócio": "SOCIO", "Diversos": "DIVERSOS"}
+        txt_destino = str(edited.loc[i, "Destino"]).strip()
+        want_tipo_relatorio = mapa_relatorios.get(txt_destino, "EMPRESA")
+        already_tipo_relatorio = current_tipo_relatorio.get(mid, "EMPRESA")
 
         # Regra: se já conciliado, não permite desmarcar por aqui (fase 1)
         if already_conc and (not want_conc):
@@ -104,7 +106,7 @@ def calcular_changes(
             new_cat_id != old_cat
             or new_obs_str != old_obs
             or (want_conc != already_conc)
-            or (want_cliente != already_cliente)
+            or (want_tipo_relatorio != already_tipo_relatorio)
             or (new_proc_label_str != old_proc_ref_str)
             or (new_cliente_label_str != old_cliente_nome_str)
         ):
@@ -122,7 +124,7 @@ def calcular_changes(
                 "new_proc_id": new_proc_id,
                 "want_conc": want_conc,
                 "new_obs": obs_to_save,
-                "want_cliente": want_cliente,
+                "want_tipo_relatorio": want_tipo_relatorio,
                 "cliente_changed": new_cliente_label_str != old_cliente_nome_str,
                 "new_cliente_id": new_cliente_id
             })
@@ -159,16 +161,16 @@ def aplicar_changes_no_banco(
                                 (ch["new_obs"], ch["new_cat_id"], int(mp_id))
                             )
                         
-                        # is_cliente continua sendo da raiz
+                        # Atualiza tipo_relatorio (mantendo compatibilidade com is_cliente)
                         cur.execute(
-                            "UPDATE movimento_bancario SET is_cliente = %s WHERE id = %s",
-                            (ch["want_cliente"], int(mid)),
+                            "UPDATE movimento_bancario SET tipo_relatorio = %s, is_cliente = %s WHERE id = %s",
+                            (ch["want_tipo_relatorio"], ch["want_tipo_relatorio"] == "CLIENTE", int(mid)),
                         )
                     else:
-                        # 1) Categoria e Is_cliente (movimento nao particionado)
+                        # 1) Categoria e Tipo_Relatorio (movimento nao particionado)
                         cur.execute(
-                            "UPDATE movimento_bancario SET categoria_id = %s, is_cliente = %s WHERE id = %s",
-                            (ch["new_cat_id"], ch["want_cliente"], int(mid)),
+                            "UPDATE movimento_bancario SET categoria_id = %s, tipo_relatorio = %s, is_cliente = %s WHERE id = %s",
+                            (ch["new_cat_id"], ch["want_tipo_relatorio"], ch["want_tipo_relatorio"] == "CLIENTE", int(mid)),
                         )
                         
                         # 1.5) Processo (tabela N:N convertida em 1 único vínculo na base)

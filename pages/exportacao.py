@@ -40,7 +40,7 @@ def render_exportacao():
             dt_inicio = c1.date_input("Início", value=date.today().replace(day=1))
             dt_fim = c2.date_input("Fim", value=date.today())
 
-            tipo_filtro = st.radio("Filtrar por:", ["Cliente", "Empresa"], key="exp_tipo")
+            tipo_filtro = st.radio("Filtrar por:", ["Empresa", "Cliente", "Sócio", "Diversos"], key="exp_tipo")
 
         with col_select:
             saldo_inicial = st.number_input("Saldo Inicial", value=0.00, step=100.0)
@@ -53,9 +53,10 @@ def render_exportacao():
                     selecionado_emp = st.selectbox("Selecione a Empresa", opcoes_emp)
                 else:
                     selecionado_emp = None
-            else:
+            elif tipo_filtro in ["Empresa", "Sócio", "Diversos"]:
                 opcoes = ["Todas"] + get_lista_empresas()
                 selecionado = st.selectbox("Selecione a Empresa", opcoes)
+                selecionado_emp = None
 
     st.markdown("---")
 
@@ -64,7 +65,7 @@ def render_exportacao():
         
         # Calculate running Saldo
         if not df_resultado.empty:
-            if (tipo_filtro == "Cliente" and selecionado_emp == "Todas") or (tipo_filtro == "Empresa" and selecionado == "Todas"):
+            if (tipo_filtro == "Cliente" and selecionado_emp == "Todas") or (tipo_filtro in ["Empresa", "Sócio", "Diversos"] and selecionado == "Todas"):
                 # Separa saldo por empresa
                 novo_saldo_col = []
                 saldos_atuais = {} 
