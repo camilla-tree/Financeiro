@@ -601,7 +601,7 @@ def render_conciliacao():
             "Categoria": st.column_config.SelectboxColumn("Categoria", options=cat_labels),
             "Cliente": st.column_config.SelectboxColumn("Cliente", options=["-"] + clientes),
             "Conciliado": st.column_config.CheckboxColumn("Conciliado"),
-            "Destino": st.column_config.SelectboxColumn("Destino", options=["Empresa", "Cliente", "Sócio", "Diversos"]),
+            "Destino": st.column_config.SelectboxColumn("Relatorio Destino", options=["Empresa", "Cliente", "Sócio", "Diversos"]),
         },
         key="conc_editor",
     )
