@@ -582,7 +582,7 @@ def render_conciliacao():
         "Categoria": df_mov["categoria_id"].apply(_cat_label),
         "Cliente": df_mov["cliente_nome"].fillna("-"),
         "Conciliado": is_conciliado_series.astype(bool),
-        "Destino": df_mov["destino_str"] if not df_mov.empty else [],
+        "Relatorio Destino": df_mov["destino_str"] if not df_mov.empty else [],
     })
 
     edited = st.data_editor(
