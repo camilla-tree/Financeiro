@@ -102,8 +102,11 @@ def render_exportacao():
 
     if not df.empty:
         # --- DEFINIÇÃO DAS COLUNAS PARA EXIBIÇÃO ---
-        # Adicionamos "Empresa" no início
-        cols_view = ["Empresa", "Banco", "Processo", "Data", "Movimentação", "Descrição", "Categoria", "Entrada", "Saída", "Saldo"]
+        is_cliente_mode = st.session_state.get('is_cliente_mode', False)
+        if is_cliente_mode:
+            cols_view = ["Data", "Processo", "Categoria", "Entrada", "Saída", "Saldo"]
+        else:
+            cols_view = ["Empresa", "Banco", "Processo", "Data", "Movimentação", "Descrição", "Categoria", "Entrada", "Saída", "Saldo"]
         
         # Garante integridade das colunas
         for col in cols_view:
@@ -244,19 +247,30 @@ def gerar_pdf_hurr(df, titulo="Relatório", saldo_inicial=0.0, is_cliente=False)
         lista_dados.append(linha)
 
     # --- NOVAS LARGURAS (Total Disponível ~285mm) ---
-    # [Empresa, Banco, Processo, Data, Movimentação, Descrição, Categoria, Entrada, Saída, Saldo]
-    col_widths = [
-        25*mm,  # Empresa 
-        23*mm,  # Banco
-        23*mm,  # Processo
-        20*mm,  # Data
-        38*mm,  # Movimentação 
-        44*mm,  # Descrição
-        28*mm,  # Categoria
-        24*mm,  # Entrada
-        24*mm,  # Saída
-        24*mm   # Saldo
-    ]
+    if len(data_export.columns) == 6:
+        # ["Data", "Processo", "Categoria", "Entrada", "Saída", "Saldo"]
+        col_widths = [
+            35*mm,  # Data
+            50*mm,  # Processo
+            80*mm,  # Categoria
+            40*mm,  # Entrada
+            40*mm,  # Saída
+            40*mm   # Saldo
+        ]
+    else:
+        # [Empresa, Banco, Processo, Data, Movimentação, Descrição, Categoria, Entrada, Saída, Saldo]
+        col_widths = [
+            25*mm,  # Empresa 
+            23*mm,  # Banco
+            23*mm,  # Processo
+            20*mm,  # Data
+            38*mm,  # Movimentação 
+            44*mm,  # Descrição
+            28*mm,  # Categoria
+            24*mm,  # Entrada
+            24*mm,  # Saída
+            24*mm   # Saldo
+        ]
     
     t = Table(lista_dados, colWidths=col_widths, repeatRows=1)
     t.setStyle(TableStyle([
