@@ -562,9 +562,8 @@ def render_conciliacao():
     def _map_destino(val):
         v = str(val).upper()
         if v == "CLIENTE": return "Cliente"
-        if v == "SOCIO": return "Sócio"
         if v == "DIVERSOS": return "Diversos"
-        return "Empresa"
+        return "Sócio"
         
     if not df_mov.empty and "destino_str" not in df_mov.columns:
         df_mov["destino_str"] = df_mov["tipo_relatorio"].apply(_map_destino)
@@ -601,7 +600,7 @@ def render_conciliacao():
             "Categoria": st.column_config.SelectboxColumn("Categoria", options=cat_labels),
             "Cliente": st.column_config.SelectboxColumn("Cliente", options=["-"] + clientes),
             "Conciliado": st.column_config.CheckboxColumn("Conciliado"),
-            "Relatorio Destino": st.column_config.SelectboxColumn("Relatorio Destino", options=["Empresa", "Cliente", "Sócio", "Diversos"]),
+            "Relatorio Destino": st.column_config.SelectboxColumn("Relatorio Destino", options=["Sócio", "Cliente", "Diversos"]),
         },
         key="conc_editor",
     )

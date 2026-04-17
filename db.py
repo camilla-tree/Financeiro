@@ -390,7 +390,7 @@ def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtr
             params.append(empresa_selecionada)
             
     elif tipo_filtro == "Sócio":
-        sql += " AND mb.tipo_relatorio = 'SOCIO' "
+        sql += " AND mb.tipo_relatorio IN ('EMPRESA', 'SOCIO') "
         if valor_filtro != "Todas":
             sql += " AND e.nome = %s "
             params.append(valor_filtro)
@@ -401,11 +401,7 @@ def get_dados_relatorio_filtrado(data_inicio, data_fim, tipo_filtro, valor_filtr
             sql += " AND e.nome = %s "
             params.append(valor_filtro)
             
-    elif tipo_filtro == "Empresa":
-        sql += " AND mb.tipo_relatorio = 'EMPRESA' "
-        if valor_filtro != "Todas":
-            sql += " AND e.nome = %s "
-            params.append(valor_filtro)
+
     
     sql += " ORDER BY e.nome ASC, v.dt_movimento ASC, v.movimento_id ASC"
 

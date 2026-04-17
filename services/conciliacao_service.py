@@ -62,7 +62,7 @@ def calcular_changes(
         want_conc = bool(edited.loc[i, "Conciliado"])
         already_conc = current_is_conc.get(mid, False)
 
-        mapa_relatorios = {"Empresa": "EMPRESA", "Cliente": "CLIENTE", "Sócio": "SOCIO", "Diversos": "DIVERSOS"}
+        mapa_relatorios = {"Sócio": "EMPRESA", "Cliente": "CLIENTE", "Diversos": "DIVERSOS"}
         txt_destino = str(edited.loc[i, "Relatorio Destino"]).strip()
         want_tipo_relatorio = mapa_relatorios.get(txt_destino, "EMPRESA")
         already_tipo_relatorio = current_tipo_relatorio.get(mid, "EMPRESA")
